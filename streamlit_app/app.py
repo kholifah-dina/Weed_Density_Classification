@@ -617,9 +617,16 @@ def page_admin_experiments():
 
             results = []
 
-            def _run(mdl, display_param, extra=None):
+            # Balanced sample weights for GBT (mirrors predict.py behaviour)
+            from predict import _compute_sample_weights as _cw
+            _sw_exp = _cw(Y_train)
+
+            def _run(mdl, display_param, extra=None, use_sample_weight=False):
                 t0 = time.time()
-                mdl.fit(X_train_sc, Y_train)
+                if use_sample_weight:
+                    mdl.fit(X_train_sc, Y_train, sample_weight=_sw_exp)
+                else:
+                    mdl.fit(X_train_sc, Y_train)
                 exec_t      = round(time.time() - t0, 4)
                 Y_pred_val  = mdl.predict(X_val_sc)
                 Y_pred_test = mdl.predict(X_test_sc)
@@ -641,17 +648,22 @@ def page_admin_experiments():
                     for lr in selected_lr:
                         mdl = GradientBoostingClassifier(n_estimators=n_est, learning_rate=lr, random_state=42)
                         results.append(_run(mdl, f"n_est={n_est}, lr={lr}",
-                                           extra={'n_estimators': n_est, 'learning_rate': lr}))
+                                           extra={'n_estimators': n_est, 'learning_rate': lr},
+                                           use_sample_weight=True))
             else:
                 for p_val in selected_values:
                     if   experiment_model == "Logistic Regression":
-                        mdl = LogisticRegression(max_iter=p_val, solver='lbfgs', random_state=42)
+                        mdl = LogisticRegression(max_iter=p_val, solver='lbfgs', random_state=42,
+                                                 class_weight='balanced')
                     elif experiment_model == "Support Vector Machine (SVM)":
-                        mdl = SVC(kernel=p_val, probability=True, random_state=42)
+                        mdl = SVC(kernel=p_val, probability=True, random_state=42,
+                                  class_weight='balanced')
                     elif experiment_model == "Decision Tree":
-                        mdl = DecisionTreeClassifier(max_depth=p_val, random_state=42)
+                        mdl = DecisionTreeClassifier(max_depth=p_val, random_state=42,
+                                                     class_weight='balanced')
                     elif experiment_model == "Random Forest":
-                        mdl = RandomForestClassifier(n_estimators=p_val, random_state=42)
+                        mdl = RandomForestClassifier(n_estimators=p_val, random_state=42,
+                                                     class_weight='balanced')
                     results.append(_run(mdl, str(p_val), extra={'param_val': p_val}))
 
             df_results = pd.DataFrame(results)
@@ -750,13 +762,17 @@ def page_admin_experiments():
         Y_test     = exp_data['Y_test']
 
         if   experiment_model == "Logistic Regression":
-            best_mdl = LogisticRegression(max_iter=int(best_row['param_val']), solver='lbfgs', random_state=42)
+            best_mdl = LogisticRegression(max_iter=int(best_row['param_val']), solver='lbfgs',
+                                          random_state=42, class_weight='balanced')
         elif experiment_model == "Support Vector Machine (SVM)":
-            best_mdl = SVC(kernel=str(best_row['param_val']), probability=True, random_state=42)
+            best_mdl = SVC(kernel=str(best_row['param_val']), probability=True,
+                           random_state=42, class_weight='balanced')
         elif experiment_model == "Decision Tree":
-            best_mdl = DecisionTreeClassifier(max_depth=int(best_row['param_val']), random_state=42)
+            best_mdl = DecisionTreeClassifier(max_depth=int(best_row['param_val']),
+                                              random_state=42, class_weight='balanced')
         elif experiment_model == "Random Forest":
-            best_mdl = RandomForestClassifier(n_estimators=int(best_row['param_val']), random_state=42)
+            best_mdl = RandomForestClassifier(n_estimators=int(best_row['param_val']),
+                                              random_state=42, class_weight='balanced')
         elif experiment_model == "Gradient Boosting":
             best_mdl = GradientBoostingClassifier(
                 n_estimators=int(best_row['n_estimators']),
@@ -764,7 +780,12 @@ def page_admin_experiments():
                 random_state=42,
             )
 
-        best_mdl.fit(X_train_sc, Y_train)
+        from predict import _compute_sample_weights as _cw_best
+        if experiment_model == "Gradient Boosting":
+            best_mdl.fit(X_train_sc, Y_train,
+                         sample_weight=_cw_best(Y_train))
+        else:
+            best_mdl.fit(X_train_sc, Y_train)
         Y_pred_final  = best_mdl.predict(X_test_sc)
         labels_sorted = sorted(set(Y_test))
 

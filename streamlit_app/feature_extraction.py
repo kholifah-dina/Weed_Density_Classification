@@ -59,25 +59,39 @@ def extract_features(image):
 
 def select_features(all_features):
     """
-    Select the Top 14 features from the Information Gain process validated in the research pipeline.
-    """
-    # Based on the selected indices from notebook 4_classification:
-    # 'homogeneity_90deg' -> 10
-    # 'homogeneity_45deg' -> 9
-    # 'energy_45deg' -> 13
-    # 'energy_135deg' -> 15
-    # 'energy_90deg' -> 14
-    # 'energy_0deg' -> 12
-    # 'homogeneity_0deg' -> 8
-    # 'homogeneity_135deg' -> 11
-    # 'dissimilarity_90deg' -> 6
-    # 'dissimilarity_135deg' -> 7
-    # 'dissimilarity_45deg' -> 5
-    # 'dissimilarity_0deg' -> 4
-    # 'HuMoment_6' -> 37
-    # 'G_mean' -> 21
+    Select the Top 14 features used for classification.
 
-    selected_indices = [10, 9, 13, 15, 14, 12, 8, 11, 6, 7, 5, 4, 37, 21]
+    Feature index map (39 raw features):
+      0-3  : contrast      (0°, 45°, 90°, 135°)
+      4-7  : dissimilarity (0°, 45°, 90°, 135°)
+      8-11 : homogeneity   (0°, 45°, 90°, 135°)
+      12-15: energy        (0°, 45°, 90°, 135°)
+      16-19: correlation   (0°, 45°, 90°, 135°)
+      20   : R_mean
+      21   : G_mean
+      22   : B_mean
+      23   : R_std
+      24   : G_std          ← replaces HuMoment_6 (Cohen d=1.16 vs 0.00007)
+      25   : B_std
+      26   : H_mean
+      27   : S_mean
+      28   : V_mean
+      29   : H_std
+      30   : S_std
+      31   : V_std
+      32-38: HuMoment_1 … HuMoment_7
+
+    Change log:
+      - HuMoment_6 (idx 37) REMOVED: Cohen d=0.0001, p=0.183 → pure noise for Sedang/Padat
+      - G_std       (idx 24) ADDED  : Cohen d=1.162,  p<0.001 → strongest unused discriminator
+    """
+    # fmt: off
+    selected_indices = [10, 9, 13, 15, 14, 12, 8, 11, 6, 7, 5, 4, 24, 21]
+    # Names:  homogeneity_90deg, homogeneity_45deg, energy_45deg,      energy_135deg,
+    #         energy_90deg,      energy_0deg,        homogeneity_0deg,  homogeneity_135deg,
+    #         dissimilarity_90deg, dissimilarity_135deg, dissimilarity_45deg, dissimilarity_0deg,
+    #         G_std, G_mean
+    # fmt: on
 
     if len(all_features.shape) == 1:
         return all_features[selected_indices]

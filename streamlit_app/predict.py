@@ -22,28 +22,34 @@ MODELS_PATH = os.path.join(MODEL_DIR, 'weed_models.joblib')
 METRICS_PATH = os.path.join(MODEL_DIR, 'weed_metrics.joblib')
 
 FEATURE_NAMES = [
-    'homogeneity_90deg', 'homogeneity_45deg', 'energy_45deg', 'energy_135deg',
-    'energy_90deg',      'energy_0deg',        'homogeneity_0deg', 'homogeneity_135deg',
+    'homogeneity_90deg', 'homogeneity_45deg', 'energy_45deg',      'energy_135deg',
+    'energy_90deg',      'energy_0deg',        'homogeneity_0deg',  'homogeneity_135deg',
     'dissimilarity_90deg', 'dissimilarity_135deg', 'dissimilarity_45deg',
-    'dissimilarity_0deg', 'HuMoment_6', 'G_mean',
+    'dissimilarity_0deg', 'G_std', 'G_mean',
+    # Note: 'HuMoment_6' replaced by 'G_std' (Cohen d: 0.0001 → 1.162, p: 0.183 → <0.001)
 ]
 
 # ─── Model factory ──────────────────────────────────────────────────────────
+# class_weight='balanced' corrects for the Sedang majority bias (41 % vs 29 % Padat).
+# GradientBoostingClassifier does not support class_weight; sample_weight is
+# passed at fit-time inside _fit_and_evaluate instead.
 _MODELS_CONFIG = {
     "Logistic Regression": lambda: LogisticRegression(
-        solver='lbfgs', max_iter=300, random_state=42
+        solver='lbfgs', max_iter=300, random_state=42, class_weight='balanced'
     ),
     "SVM": lambda: SVC(
-        kernel='rbf', C=5, gamma=0.01, probability=True, random_state=42
+        kernel='rbf', C=5, gamma=0.01, probability=True, random_state=42,
+        class_weight='balanced'
     ),
     "Decision Tree": lambda: DecisionTreeClassifier(
-        max_depth=3, random_state=42
+        max_depth=3, random_state=42, class_weight='balanced'
     ),
     "Random Forest": lambda: RandomForestClassifier(
-        n_estimators=500, random_state=42
+        n_estimators=500, random_state=42, class_weight='balanced'
     ),
     "Gradient Boosting": lambda: GradientBoostingClassifier(
         n_estimators=300, learning_rate=0.1, random_state=42
+        # sample_weight applied at fit-time — see _fit_and_evaluate
     ),
 }
 
@@ -66,21 +72,43 @@ def _split_80_10_10(X, y):
     return X_train, X_val, X_test, y_train, y_val, y_test
 
 
+def _compute_sample_weights(y):
+    """
+    Compute per-sample inverse-frequency weights so every class contributes
+    equally during training regardless of class size.
+    Equivalent to class_weight='balanced' for models that do not support it
+    natively (e.g. GradientBoostingClassifier).
+    """
+    classes, counts = np.unique(y, return_counts=True)
+    weight_map = {cls: len(y) / (len(classes) * cnt)
+                  for cls, cnt in zip(classes, counts)}
+    return np.array([weight_map[label] for label in y])
+
+
 def _fit_and_evaluate(models_config, X_train_sc, X_val_sc, X_test_sc,
                       y_train, y_val, y_test, unique_labels):
     """
     Train every model in models_config and return
     (trained_models, evaluation_metrics, confusion_matrices).
     Metrics are computed on the test set; Val Accuracy is also recorded.
+
+    GradientBoostingClassifier receives sample_weight at fit-time because it
+    does not support the class_weight constructor parameter.
     """
     trained_models      = {}
     evaluation_metrics  = {}
     confusion_matrices  = {}
 
+    # Pre-compute balanced sample weights for GBT
+    sample_weights = _compute_sample_weights(y_train)
+
     for model_name, model_factory in models_config.items():
         model = model_factory()
         t0 = time.time()
-        model.fit(X_train_sc, y_train)
+        if model_name == "Gradient Boosting":
+            model.fit(X_train_sc, y_train, sample_weight=sample_weights)
+        else:
+            model.fit(X_train_sc, y_train)
         exec_time = round(time.time() - t0, 4)
 
         y_pred_val  = model.predict(X_val_sc)
