@@ -24,6 +24,7 @@ from sklearn.tree import DecisionTreeClassifier
 from feature_extraction import select_features
 from predict import (
     FEATURE_NAMES,
+    _compute_sample_weights,
     get_feature_values,
     load_metrics,
     load_pipeline,
@@ -618,8 +619,7 @@ def page_admin_experiments():
             results = []
 
             # Balanced sample weights for GBT (mirrors predict.py behaviour)
-            from predict import _compute_sample_weights as _cw
-            _sw_exp = _cw(Y_train)
+            _sw_exp = _compute_sample_weights(Y_train)
 
             def _run(mdl, display_param, extra=None, use_sample_weight=False):
                 t0 = time.time()
@@ -780,10 +780,9 @@ def page_admin_experiments():
                 random_state=42,
             )
 
-        from predict import _compute_sample_weights as _cw_best
         if experiment_model == "Gradient Boosting":
             best_mdl.fit(X_train_sc, Y_train,
-                         sample_weight=_cw_best(Y_train))
+                         sample_weight=_compute_sample_weights(Y_train))
         else:
             best_mdl.fit(X_train_sc, Y_train)
         Y_pred_final  = best_mdl.predict(X_test_sc)
