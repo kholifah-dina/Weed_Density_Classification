@@ -137,6 +137,20 @@ html, body, [class*="css"] { font-family: 'Poppins', sans-serif; }
     padding-bottom: 6px;
     margin: 20px 0 12px 0;
 }
+
+/* ── Dark mode overrides ─────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --light-green: rgba(46, 204, 113, 0.12);
+    }
+    .step-desc       { color: #b0b8c1 !important; }
+    .step-label      { color: #a8e6cf !important; }
+    .step-box        { background: var(--light-green) !important; color: #d0d8e0 !important; }
+    .badge-best      { background: var(--light-green) !important; color: #a8e6cf !important; }
+    .info-box        { background: rgba(46, 204, 113, 0.08) !important; color: #c8d6e0 !important; }
+    .section-title   { color: #d0d8e0 !important; }
+    .split-chip      { color: inherit !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -572,13 +586,15 @@ def page_training():
                 x=cm_d['labels'], y=cm_d['labels'],
                 title=f"Confusion Matrix — {selected_algo}",
             )
-            fig_cm.update_layout(xaxis_title="Prediksi", yaxis_title="Aktual", width=480, height=400)
+            fig_cm.update_layout(
+                xaxis_title="Prediksi", yaxis_title="Aktual", width=480, height=400,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            )
             st.plotly_chart(fig_cm)
-
-            st.markdown(
-                "**Cara membaca Confusion Matrix:** Baris = kelas aktual (sebenarnya), "
-                "Kolom = kelas prediksi model. Angka pada diagonal = prediksi benar. "
-                "Angka di luar diagonal = prediksi salah."
+            st.caption(
+                "Confusion Matrix menunjukkan performa model per kelas. "
+                "Diagonal (kiri-atas ke kanan-bawah) = prediksi benar. "
+                "Angka di luar diagonal = prediksi salah — semakin kecil semakin baik."
             )
 
         # Tombol latih ulang model lain
@@ -740,11 +756,14 @@ def page_testing():
             x=cm_data['labels'], y=cm_data['labels'],
             title=f"Confusion Matrix — {selected_model}",
         )
-        fig_cm.update_layout(xaxis_title="Prediksi", yaxis_title="Aktual", width=480, height=400)
+        fig_cm.update_layout(
+            xaxis_title="Prediksi", yaxis_title="Aktual", width=480, height=400,
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        )
         st.plotly_chart(fig_cm)
-        st.markdown(
-            "**Cara membaca:** Baris = kelas aktual, Kolom = prediksi model. "
-            "Angka diagonal = prediksi benar. Angka di luar diagonal = prediksi salah (perlu diperhatikan)."
+        st.caption(
+            "Baris = kelas aktual, Kolom = prediksi model. "
+            "Angka pada diagonal = prediksi benar. Angka di luar diagonal = kesalahan klasifikasi."
         )
 
     # ── Bandingkan semua model ──────────────────────────────────────────
@@ -988,8 +1007,12 @@ def page_experiments():
             fig = px.line(df_melt, x="Parameter", y="Skor", color="Metrik", markers=True,
                           title=f"{exp_model}: Metrik vs {param_name}")
             fig.update_xaxes(type='category')
-        fig.update_layout(yaxis_range=[0, 1.05])
+        fig.update_layout(yaxis_range=[0, 1.05], paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Grafik menunjukkan pengaruh nilai parameter terhadap metrik evaluasi. "
+            "Skor mendekati 1.0 = performa terbaik. Perhatikan nilai parameter yang menghasilkan Accuracy dan F1-Score tertinggi."
+        )
 
         # Confusion Matrix parameter terbaik
         st.markdown("### 🔲 Confusion Matrix — Parameter Terbaik")
@@ -1000,8 +1023,15 @@ def page_experiments():
             x=labels_s, y=labels_s,
             title=f"Confusion Matrix — {exp_model} | {best_row['Parameter']}",
         )
-        fig_cm.update_layout(xaxis_title="Prediksi", yaxis_title="Aktual")
+        fig_cm.update_layout(
+            xaxis_title="Prediksi", yaxis_title="Aktual",
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        )
         st.plotly_chart(fig_cm, use_container_width=True)
+        st.caption(
+            "Confusion Matrix untuk konfigurasi parameter terbaik (Accuracy tertinggi). "
+            "Diagonal = prediksi benar per kelas. Sel off-diagonal = kesalahan yang perlu diperhatikan."
+        )
 
         # Classification report
         with st.expander("📄 Classification Report — Parameter Terbaik"):
@@ -1110,8 +1140,12 @@ def page_dashboard():
                 title='Perbandingan Metrik Semua Model (Data Test 10%)',
                 color_discrete_sequence=px.colors.qualitative.Safe,
             )
-            fig_bar.update_layout(yaxis_range=[0, 1.05])
+            fig_bar.update_layout(yaxis_range=[0, 1.05], paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_bar, use_container_width=True)
+            st.caption(
+                "Perbandingan Accuracy, Precision, Recall, dan F1-Score semua model pada data test (10%). "
+                "Model dengan batang tertinggi di semua metrik adalah kandidat terbaik untuk digunakan."
+            )
 
             # Confusion matrix per model
             with st.expander("🔲 Lihat Confusion Matrix Semua Model"):
@@ -1127,9 +1161,13 @@ def page_dashboard():
                                 x=cmd['labels'], y=cmd['labels'],
                                 title=row_d['Model'],
                             )
-                            fig_c.update_layout(width=340, height=320,
-                                                xaxis_title="Prediksi", yaxis_title="Aktual")
+                            fig_c.update_layout(
+                                width=340, height=320,
+                                xaxis_title="Prediksi", yaxis_title="Aktual",
+                                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                            )
                             cm_cols[i % len(cm_cols)].plotly_chart(fig_c)
+                            cm_cols[i % len(cm_cols)].caption("Diagonal = prediksi benar")
                     except Exception:
                         pass
     else:
@@ -1162,8 +1200,12 @@ def page_dashboard():
                 title=f"Eksperimen — {m_name}",
             )
             fig_exp.update_xaxes(type='category')
-            fig_exp.update_layout(yaxis_range=[0, 1.05])
+            fig_exp.update_layout(yaxis_range=[0, 1.05], paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_exp, use_container_width=True)
+            st.caption(
+                f"Tren Accuracy dan F1-Score {m_name} untuk setiap variasi parameter yang diuji. "
+                "Garis mendatar atau menurun mengindikasikan parameter tersebut kurang berpengaruh pada model ini."
+            )
     else:
         st.info("Belum ada hasil eksperimen. Kunjungi menu **🔬 Eksperimen Parameter**.")
 
