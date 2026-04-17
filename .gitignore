@@ -13,9 +13,10 @@ env/
 .env/
 ENV/
 
-# ── Trained model files (regenerated via Admin → Training) ────────────────────
-# weed_metrics.joblib is small and safe to track; the model binary is large.
-streamlit_app/models/weed_models.joblib
+# ── Trained model files (regenerate via menu Alur Pelatihan) ─────────────────
+# Per-model .joblib files are large binaries — not tracked in git.
+# Re-train locally after cloning: buka menu Alur Pelatihan → Upload Dataset → Latih.
+streamlit_app/models/*.joblib
 
 # ── Streamlit local cache ──────────────────────────────────────────────────────
 .streamlit/secrets.toml

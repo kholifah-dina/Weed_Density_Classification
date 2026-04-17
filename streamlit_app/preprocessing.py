@@ -55,9 +55,10 @@ def preprocess_image_with_steps(img_path=None, image_bytes=None):
     segmented_bgr[mask_closed > 0] = img_resized[mask_closed > 0]
 
     return {
-        'original': cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB),
-        'hsv_mask': cv2.cvtColor(mask_closed, cv2.COLOR_GRAY2RGB),
-        'segmented': cv2.cvtColor(segmented_bgr, cv2.COLOR_BGR2RGB),
+        'original':      cv2.cvtColor(img_resized,   cv2.COLOR_BGR2RGB),
+        'blurred':       cv2.cvtColor(blurred,        cv2.COLOR_BGR2RGB),
+        'hsv_mask':      cv2.cvtColor(mask_closed,    cv2.COLOR_GRAY2RGB),
+        'segmented':     cv2.cvtColor(segmented_bgr,  cv2.COLOR_BGR2RGB),
         'segmented_bgr': segmented_bgr,
     }
 
