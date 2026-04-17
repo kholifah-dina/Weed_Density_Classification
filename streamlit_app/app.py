@@ -392,6 +392,20 @@ def page_training():
                     st.error("Tidak ada fitur yang berhasil diekstrak. Periksa gambar yang diupload.")
                     st.stop()
 
+                from collections import Counter
+                MIN_PER_CLASS = 9
+                class_counts = Counter(y_all)
+                min_count = min(class_counts.values())
+                if min_count < MIN_PER_CLASS:
+                    kelas_sedikit = [f"**{k}** ({v} gambar)" for k, v in sorted(class_counts.items()) if v < MIN_PER_CLASS]
+                    st.error(
+                        f"Setiap kelas membutuhkan minimal **{MIN_PER_CLASS} gambar** agar dapat dibagi menjadi "
+                        f"80% train · 10% validasi · 10% test (stratified split). "
+                        f"Kelas yang belum cukup: {', '.join(kelas_sedikit)}. "
+                        "Silakan kembali ke Langkah 1 dan upload lebih banyak gambar per kelas."
+                    )
+                    st.stop()
+
                 X_train, X_val, X_test, y_train, y_val, y_test = _split_80_10_10(X_all, y_all)
 
                 if mode_code == '39':
