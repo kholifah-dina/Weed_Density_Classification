@@ -21,9 +21,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 
-from feature_extraction import select_features
 from predict import (
     FEATURE_NAMES,
+    N_FEATURES_WITH_GLCM,
+    N_FEATURES_WITHOUT_GLCM,
+    N_SELECT_BEST,
     _compute_sample_weights,
     get_feature_values,
     load_metrics,
@@ -187,9 +189,9 @@ def page_dashboard():
         </h4>
         <p style='color:#777; max-width:680px; margin:16px auto; line-height:1.7;'>
             Sistem ini mengklasifikasikan tingkat kepadatan gulma pada lahan pertanian menjadi
-            tiga kelas: <b>Renggang</b>, <b>Sedang</b>, dan <b>Padat</b>, menggunakan
-            pipeline: Resize → Gaussian Blur → Segmentasi HSV → Morphological Closing →
-            Ekstraksi 14 Fitur Terbaik (Information Gain) → <b>Gradient Boosting Classifier</b>.
+            tiga kelas: <b>Renggang</b>, <b>Sedang</b>, dan <b>Padat</b>, yang mana 
+            model dilatih menggunakan dataset hasil segmentasi warna HSV dan
+            <b>Ekstraksi 19 Fitur</b> (RGB, HSV, Hu Moments) menggunakan algoritma <b>Gradient Boosting Classifier</b>.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -240,8 +242,8 @@ def page_admin_training():
     st.header("🗂️ Training Model")
     st.markdown("""
     Latih semua model klasifikasi dengan pembagian data **80% Train · 10% Validation · 10% Test** (stratified).
-    Pipeline lengkap: **Resize 224×224 → Gaussian Blur → HSV Segmentasi → Morphological Closing →
-    Ekstraksi 14 Fitur Terbaik (Information Gain) → StandardScaler → Training**.
+    Sistem akan menjalankan *preprocessing* untuk setiap gambar (segmentasi HSV → Morphological Closing → 
+    **Ekstraksi 19 Fitur** → StandardScaler → Training).
     """)
 
     # ── Info: CSV Alternative ─────────────────────────────────────────
@@ -315,9 +317,19 @@ def page_admin_training():
     # ══ MODE B: CSV Lokal ══════════════════════════════════════════════
     st.markdown("---")
     st.markdown("### 📄 Mode B — Latih dari CSV Lokal *(Fitur Sudah Diekstrak)*")
-    st.markdown("""
-    Gunakan file CSV yang sudah berisi **39 kolom fitur + kolom `Class`**
-    (format identik seperti `Data_ekstraksi_Fitur_Gulma.csv`).
+    st.markdown(f"""
+    Gunakan file CSV yang sudah berisi fitur + kolom `Class`. Sistem mendukung **dua format**:
+
+    - **CSV {N_FEATURES_WITH_GLCM} fitur** (dengan GLCM): `contrast_*deg, dissimilarity_*deg, homogeneity_*deg,
+      energy_*deg, correlation_*deg` (20 GLCM) + `R_mean, G_mean, B_mean, R_std, G_std, B_std,
+      H_mean, S_mean, V_mean, H_std, S_std, V_std, HuMoment_1..7` (19).
+      → Sistem akan otomatis memilih **{N_SELECT_BEST} fitur terbaik** menggunakan
+      **Information Gain (LAN / mutual_info_classif)**.
+
+    - **CSV {N_FEATURES_WITHOUT_GLCM} fitur** (tanpa GLCM): hanya `R_mean, G_mean, B_mean, R_std,
+      G_std, B_std, H_mean, S_mean, V_mean, H_std, S_std, V_std, HuMoment_1..7`.
+      → Semua **{N_FEATURES_WITHOUT_GLCM} fitur** digunakan langsung tanpa seleksi.
+
     Opsi ini cocok untuk dataset **>190 gambar per kelas** dan jauh lebih cepat
     karena tidak perlu preprocessing ulang.
     """)
@@ -356,10 +368,14 @@ def page_admin_training():
                 _csv_errors = []
                 if not has_class:
                     _csv_errors.append("Kolom `Class` tidak ditemukan. Tambahkan kolom berisi label (Renggang/Sedang/Padat).")
-                if n_feat_cols != 39:
+
+                _valid_feat_counts = [N_FEATURES_WITH_GLCM, N_FEATURES_WITHOUT_GLCM]
+                if n_feat_cols not in _valid_feat_counts:
                     _csv_errors.append(
-                        f"Jumlah kolom fitur harus **39**, ditemukan **{n_feat_cols}**. "
-                        "Pastikan format CSV identik dengan `Data_ekstraksi_Fitur_Gulma.csv`."
+                        f"Jumlah kolom fitur harus **{N_FEATURES_WITH_GLCM}** (dengan GLCM) "
+                        f"atau **{N_FEATURES_WITHOUT_GLCM}** (tanpa GLCM), "
+                        f"namun ditemukan **{n_feat_cols}**. "
+                        "Periksa kembali format CSV Anda."
                     )
                 else:
                     # Check that all feature columns contain numeric data
@@ -370,16 +386,41 @@ def page_admin_training():
                             f"Kolom berikut bukan numerik: `{', '.join(_non_numeric[:5])}`. "
                             "Semua kolom fitur harus bertipe angka (float/int)."
                         )
+                    else:
+                        # Tampilkan info mode yang akan digunakan
+                        if n_feat_cols == N_FEATURES_WITH_GLCM:
+                            st.info(
+                                f"🧠 **Mode: CSV {N_FEATURES_WITH_GLCM} Fitur (dengan GLCM)** — "
+                                f"Sistem akan menggunakan **Information Gain (LAN)** untuk memilih "
+                                f"**{N_SELECT_BEST} fitur terbaik** sebelum training."
+                            )
+                        else:
+                            st.info(
+                                f"📊 **Mode: CSV {N_FEATURES_WITHOUT_GLCM} Fitur (tanpa GLCM)** — "
+                                f"Semua **{N_FEATURES_WITHOUT_GLCM} fitur** akan digunakan langsung "
+                                "tanpa seleksi."
+                            )
 
                 for _err in _csv_errors:
                     st.error(_err)
 
                 if not _csv_errors:
+                    _spinner_text = (
+                        f"Memuat CSV → Seleksi {N_SELECT_BEST} Fitur (LAN/IG) → Training (80:10:10) …"
+                        if n_feat_cols == N_FEATURES_WITH_GLCM
+                        else f"Memuat CSV → Training menggunakan {N_FEATURES_WITHOUT_GLCM} Fitur (80:10:10) …"
+                    )
                     if st.button("🚀 Latih dari CSV", use_container_width=True, key="btn_csv_train"):
-                        with st.spinner("Memuat CSV → Seleksi 14 Fitur → Training (80:10:10) …"):
+                        with st.spinner(_spinner_text):
                             results = train_models_from_csv(abs_csv)
                             st.session_state['train_results'] = results
-                        st.success("✅ Training dari CSV selesai! Model & metrik tersimpan.")
+                        _feat_info = (
+                            f"✅ Training dari CSV selesai! Dipilih **{N_SELECT_BEST} fitur terbaik** "
+                            "menggunakan Information Gain. Model & metrik tersimpan."
+                            if results.get('feature_selection')
+                            else "✅ Training dari CSV selesai! Model & metrik tersimpan."
+                        )
+                        st.success(_feat_info)
             except Exception as e:
                 st.error(f"Gagal membaca CSV: {e}")
         else:
@@ -406,6 +447,36 @@ def page_admin_training():
                 f"<span class='split-chip' style='background:#e74c3c22; color:#c0392b; border:1px solid #c0392b;'>"
                 f"Test: {si['test']} ({pct(si['test'])}%)</span>"
                 f"&nbsp;— Total: <b>{si['total']}</b> sampel",
+                unsafe_allow_html=True,
+            )
+
+        # ── Info Fitur yang Digunakan ───────────────────────────────────
+        _feat_sel   = results.get('feature_selection', False)
+        _n_input    = results.get('n_features_input', N_FEATURES_WITHOUT_GLCM)
+        _n_selected = results.get('n_features_selected', N_FEATURES_WITHOUT_GLCM)
+        _feat_list  = results.get('features', FEATURE_NAMES)
+
+        if _feat_sel and _n_input == N_FEATURES_WITH_GLCM:
+            st.markdown(
+                f"""
+                <div class='feat-info-box'>
+                    🧠 <b>Seleksi Fitur: Information Gain (LAN)</b><br>
+                    Input: <b>{_n_input} fitur</b> (dengan GLCM)
+                    &rarr; Dipilih <b>{_n_selected} fitur terbaik</b>.<br>
+                    <b>Fitur Terpilih:</b> {', '.join(f'<code>{f}</code>' for f in _feat_list)}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"""
+                <div class='feat-info-box'>
+                    📊 <b>Fitur yang Digunakan: {_n_selected} fitur</b> (tanpa GLCM) — digunakan langsung tanpa seleksi.<br>
+                    Fitur mencakup: <em>RGB mean &amp; std (6)</em>, <em>HSV mean &amp; std (6)</em>,
+                    dan <em>Hu Moments (7)</em>.
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
@@ -490,11 +561,6 @@ def page_admin_training():
         fig_cm.update_layout(xaxis_title="Prediksi", yaxis_title="Aktual", width=480, height=420)
         st.plotly_chart(fig_cm)
 
-        # Selected Features
-        st.markdown("### 🧬 14 Fitur Terpilih (Information Gain)")
-        df_feat = pd.DataFrame({"No": range(1, 15), "Nama Fitur": results['features']})
-        st.table(df_feat.set_index("No"))
-
 
 # ══════════════════════════════════════════════
 # PAGE: ADMIN — EXPERIMENTS
@@ -510,6 +576,9 @@ def page_admin_experiments():
     # ── Load CSV feature dataset ──────────────────────────────────────
     @st.cache_data
     def load_csv_data():
+        from sklearn.feature_selection import SelectKBest, mutual_info_classif
+        from sklearn.model_selection import train_test_split as _tts
+
         search_paths = [
             os.path.join(os.path.dirname(__file__), "Data_ekstraksi_Fitur_Gulma.csv"),
             os.path.join(os.path.dirname(__file__), "..", "Data_ekstraksi_Fitur_Gulma.csv"),
@@ -519,13 +588,28 @@ def page_admin_experiments():
         ]
         for p in search_paths:
             if os.path.exists(p):
-                df   = pd.read_csv(p)
-                X_all = df.drop(columns=['Class']).to_numpy(dtype=float)
-                Y     = df['Class'].to_numpy(dtype=str)
-                return select_features(X_all), Y
-        return None, None
+                df        = pd.read_csv(p)
+                feat_cols = [c for c in df.columns if c != 'Class']
+                X_all     = df[feat_cols].to_numpy(dtype=float)
+                Y         = df['Class'].to_numpy(dtype=str)
+                n_orig    = X_all.shape[1]
 
-    X_exp, Y_exp = load_csv_data()
+                if n_orig == N_FEATURES_WITH_GLCM:
+                    # Gunakan LAN — fit selector hanya pada training split
+                    X_tr, _, y_tr, _ = _tts(X_all, Y, test_size=0.2,
+                                             random_state=42, stratify=Y)
+                    sel = SelectKBest(score_func=mutual_info_classif, k=N_SELECT_BEST)
+                    sel.fit(X_tr, y_tr)
+                    X_all = sel.transform(X_all)
+
+                return X_all, Y, n_orig
+        return None, None, None
+
+    _cache_result = load_csv_data()
+    if _cache_result[0] is None:
+        X_exp, Y_exp, n_orig_exp = None, None, None
+    else:
+        X_exp, Y_exp, n_orig_exp = _cache_result
 
     if X_exp is None:
         st.error(
@@ -540,10 +624,18 @@ def page_admin_experiments():
     n_val   = round(n_total * 0.1)
     n_test  = n_total - n_train - n_val
 
-    st.info(
-        f"Dataset: **{n_total} sampel** · **{X_exp.shape[1]} fitur terpilih** · "
-        f"Split 80:10:10 → Train ≈{n_train} | Val ≈{n_val} | Test ≈{n_test}"
-    )
+    _feat_used = X_exp.shape[1]
+    if n_orig_exp == N_FEATURES_WITH_GLCM:
+        st.info(
+            f"Dataset: **{n_total} sampel** · Input **{n_orig_exp} fitur** (dengan GLCM) "
+            f"→ dipilih **{_feat_used} fitur terbaik** (LAN/IG) · "
+            f"Split 80:10:10 → Train ≈{n_train} | Val ≈{n_val} | Test ≈{n_test}"
+        )
+    else:
+        st.info(
+            f"Dataset: **{n_total} sampel** · **{_feat_used} fitur** (tanpa GLCM) · "
+            f"Split 80:10:10 → Train ≈{n_train} | Val ≈{n_val} | Test ≈{n_test}"
+        )
 
     # ── Model & Parameter Selection ───────────────────────────────────
     experiment_model = st.selectbox(
@@ -848,37 +940,56 @@ def page_user_inference():
         st.markdown("<p class='step-label'>③ Hasil Morphological Closing</p>", unsafe_allow_html=True)
 
     # ──────────────────────────────────────────────────────────────────
-    # TAHAP 2 — Ekstraksi & Seleksi 14 Fitur
+    # TAHAP 2 — Ekstraksi Fitur
     # ──────────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### 🧬 Tahap 2 — Ekstraksi & Seleksi Fitur *(Top-14 Information Gain)*")
 
     with st.spinner("Mengekstrak fitur …"):
-        feature_values = get_feature_values(image_bytes=image_bytes)
+        feature_values, feat_names_raw, _uses_glcm = get_feature_values(image_bytes=image_bytes)
 
     if feature_values is None:
         st.error("Gagal mengekstrak fitur dari gambar.")
         return
 
-    st.markdown("""
-    <div class='feat-info-box'>
-        <b>14 fitur terpilih</b> berdasarkan seleksi <em>Information Gain</em>.
-        Fitur mencakup: <em>GLCM (kontras, homogenitas, energi, disimilaritas)</em>,
-        statistik warna RGB/HSV, dan Hu Moments.
-    </div>
-    """, unsafe_allow_html=True)
+    _n_raw = len(feat_names_raw)
+    if _uses_glcm:
+        st.markdown(f"### 🧬 Tahap 2 — Ekstraksi {_n_raw} Fitur (GLCM + RGB + HSV + Hu Moments)")
+        st.markdown(
+            f"""
+            <div class='feat-info-box'>
+                🧠 <b>Mode: Pipeline dengan GLCM + Information Gain (LAN)</b><br>
+                Diekstrak <b>{_n_raw} fitur</b> (20 GLCM + 6 RGB + 6 HSV + 7 Hu Moments),
+                lalu selector memilih <b>{N_SELECT_BEST} fitur terbaik</b> untuk inferensi.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(f"### 🧬 Tahap 2 — Ekstraksi {_n_raw} Fitur (RGB + HSV + Hu Moments)")
+        st.markdown(
+            """
+            <div class='feat-info-box'>
+                📊 <b>Mode: Pipeline 19 Fitur (tanpa GLCM)</b><br>
+                Fitur mencakup: <em>RGB mean &amp; std (6)</em>,
+                <em>HSV mean &amp; std (6)</em>, dan <em>Hu Moments (7)</em>.
+                Semua fitur digunakan langsung tanpa seleksi.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     df_feat_vals = pd.DataFrame({
-        "No":         range(1, 15),
-        "Nama Fitur": FEATURE_NAMES,
+        "No":         range(1, _n_raw + 1),
+        "Nama Fitur": feat_names_raw,
         "Nilai":      [round(float(v), 8) for v in feature_values],
     })
 
+    half = max(1, _n_raw // 2)
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        st.dataframe(df_feat_vals.iloc[:7].set_index("No"), use_container_width=True)
+        st.dataframe(df_feat_vals.iloc[:half].set_index("No"), use_container_width=True)
     with col_f2:
-        st.dataframe(df_feat_vals.iloc[7:].set_index("No"), use_container_width=True)
+        st.dataframe(df_feat_vals.iloc[half:].set_index("No"), use_container_width=True)
 
     # ──────────────────────────────────────────────────────────────────
     # TAHAP 3 — Pilih Model & Klasifikasi
@@ -982,7 +1093,7 @@ def page_user_inference():
             st.warning(f"Tidak dapat memuat prediksi semua model: {e}")
 
     # ── Expandable: feature values recap ───────────────────────────────
-    with st.expander("🧬 Lihat Kembali 14 Fitur yang Digunakan"):
+    with st.expander(f"🧬 Lihat Kembali {_n_raw} Fitur yang Diekstrak"):
         st.dataframe(df_feat_vals.set_index("No"), use_container_width=True)
 
 
