@@ -179,7 +179,9 @@ def train_single_model(model_name, X_train_sc, X_val_sc, X_test_sc,
 
     y_pred_val  = model.predict(X_val_sc)
     y_pred_test = model.predict(X_test_sc)
-    unique_labels = sorted(set(y_test))
+    # Gunakan union y_train + y_test agar semua kelas terwakili di confusion matrix
+    # walau dataset kecil dan salah satu kelas tidak muncul di test split
+    unique_labels = sorted(set(y_train) | set(y_test))
 
     metrics = {
         'Accuracy':           round(accuracy_score(y_test, y_pred_test), 4),

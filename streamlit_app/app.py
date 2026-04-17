@@ -210,7 +210,8 @@ with st.sidebar:
 # HELPER — Visualisasi Preprocessing (dipakai di Training & Testing)
 # ══════════════════════════════════════════════════════════════════════════════
 def render_preprocessing_steps(steps, title="🔍 Tahap Preprocessing Citra"):
-    st.markdown(f"### {title}")
+    if title:
+        st.markdown(f"### {title}")
     c1, c2, c3, c4 = st.columns(4)
     images_info = [
         (c1, steps['original'],  "① Resize 224×224",
@@ -380,8 +381,11 @@ def page_training():
         if step == 3:
             btn_label = "Jalankan Ekstraksi & Information Gain →" if mode_code == '39' else "Jalankan Ekstraksi Fitur →"
             if st.button(btn_label, use_container_width=True, key="btn_step3"):
+                imgs = st.session_state.get('train_images')
+                if imgs is None:
+                    st.error("Data gambar tidak ditemukan. Kembali ke Langkah 1 dan upload ulang gambar.")
+                    st.stop()
                 with st.spinner("Mengekstrak fitur dari semua gambar…"):
-                    imgs = st.session_state['train_images']
                     X_all, y_all = prepare_features_from_images(imgs, feature_mode=mode_code)
 
                 if len(X_all) == 0:
@@ -506,13 +510,15 @@ def page_training():
                     splits['X_train_sc'], splits['X_val_sc'], splits['X_test_sc'],
                     splits['y_train'], splits['y_val'], splits['y_test'],
                 )
+                _feat_mode_used = st.session_state.get('train_feat_mode', '19')
+                _sel_names_used = st.session_state.get('train_sel_names') or FEATURE_NAMES_19
                 save_model_bundle(
                     model_name=selected_algo,
                     model=mdl,
                     scaler=st.session_state['train_scaler'],
-                    selector=st.session_state['train_selector'],
-                    feature_mode=st.session_state['train_feat_mode'],
-                    features_used=st.session_state['train_sel_names'],
+                    selector=st.session_state.get('train_selector'),
+                    feature_mode=_feat_mode_used,
+                    features_used=_sel_names_used,
                     metrics=metrics,
                     cm=cm,
                     split_info=splits['split_info'],
@@ -944,7 +950,15 @@ def page_experiments():
             fig = px.bar(df_melt, x="Parameter", y="Skor", color="Metrik", barmode="group",
                          title=f"Gradient Boosting: Metrik per Kombinasi Parameter")
         else:
-            df_res_sorted = df_res.sort_values("Parameter")
+            # Coba sort numerik dulu (untuk max_iter, max_depth, n_estimators).
+            # Jika tidak bisa (misal kernel SVM yang berupa string), pakai sort string.
+            df_res_sorted = df_res.copy()
+            numeric_params = pd.to_numeric(df_res_sorted["Parameter"], errors='coerce')
+            if numeric_params.notna().all():
+                df_res_sorted["_sort"] = numeric_params
+                df_res_sorted = df_res_sorted.sort_values("_sort").drop(columns=["_sort"])
+            else:
+                df_res_sorted = df_res_sorted.sort_values("Parameter")
             df_melt = df_res_sorted.melt(
                 id_vars=["Parameter"], value_vars=["Accuracy","Precision","Recall","F1-Score"],
                 var_name="Metrik", value_name="Skor"
@@ -969,8 +983,12 @@ def page_experiments():
 
         # Classification report
         with st.expander("📄 Classification Report — Parameter Terbaik"):
-            rpt = classification_report(best_row['_y_test'], best_row['_y_pred'], output_dict=True)
-            st.dataframe(pd.DataFrame(rpt).transpose().style.format("{:.4f}"), use_container_width=True)
+            rpt     = classification_report(best_row['_y_test'], best_row['_y_pred'], output_dict=True)
+            df_rpt  = pd.DataFrame(rpt).transpose().round(4)
+            # Kolom support berisi jumlah sampel (integer), tampilkan sebagai int
+            if 'support' in df_rpt.columns:
+                df_rpt['support'] = df_rpt['support'].fillna(0).astype(int)
+            st.dataframe(df_rpt.fillna(''), use_container_width=True)
 
         if st.button("🗑️ Hapus Riwayat Eksperimen Model Ini", key="btn_clear_exp"):
             st.session_state['exp_history'] = [r for r in history if r.get('Model') != exp_model]
