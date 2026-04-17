@@ -874,7 +874,7 @@ def page_experiments():
             st.warning("Pilih minimal satu nilai parameter.")
 
     if can_run and st.button("🚀 Jalankan Eksperimen", use_container_width=True, key="btn_run_exp"):
-        with st.spinner("Menjalankan eksperimen…"):
+        with st.status("Menjalankan eksperimen…", expanded=True) as status:
             X_tr, X_tmp, Y_tr, Y_tmp = train_test_split(X_exp, Y_exp, test_size=0.2, random_state=42, stratify=Y_exp)
             X_vl, X_te, Y_vl, Y_te  = train_test_split(X_tmp, Y_tmp, test_size=0.5, random_state=42, stratify=Y_tmp)
             scaler_e   = StandardScaler()
@@ -907,10 +907,15 @@ def page_experiments():
             if exp_model == "Gradient Boosting":
                 for ne in sel_n_est:
                     for lr in sel_lr:
+                        label = f"n_estimators={ne}, learning_rate={lr}"
+                        status.write(f"⏳ Melatih {exp_model} — {label}")
                         mdl = GradientBoostingClassifier(n_estimators=ne, learning_rate=lr, random_state=42)
-                        new_rows.append(_run_one(mdl, f"n_est={ne}, lr={lr}", use_sw=True))
+                        row = _run_one(mdl, f"n_est={ne}, lr={lr}", use_sw=True)
+                        new_rows.append(row)
+                        status.write(f"✅ Selesai — {label} | Accuracy: {row['Accuracy']:.4f}")
             else:
                 for pv in sel_vals:
+                    status.write(f"⏳ Melatih {exp_model} — {param_name} = {pv}")
                     if exp_model == "Logistic Regression":
                         mdl = LogisticRegression(max_iter=pv, solver='lbfgs', random_state=42, class_weight='balanced')
                     elif exp_model == "Support Vector Machine (SVM)":
@@ -919,9 +924,12 @@ def page_experiments():
                         mdl = DecisionTreeClassifier(max_depth=pv, random_state=42, class_weight='balanced')
                     elif exp_model == "Random Forest":
                         mdl = RandomForestClassifier(n_estimators=pv, random_state=42, class_weight='balanced')
-                    new_rows.append(_run_one(mdl, str(pv)))
+                    row = _run_one(mdl, str(pv))
+                    new_rows.append(row)
+                    status.write(f"✅ Selesai — {param_name} = {pv} | Accuracy: {row['Accuracy']:.4f}")
 
             st.session_state['exp_history'].extend(new_rows)
+            status.update(label="✅ Semua eksperimen selesai!", state="complete")
 
     # ── Tampil hasil eksperimen saat ini ──────────────────────────────────
     history = st.session_state.get('exp_history', [])
