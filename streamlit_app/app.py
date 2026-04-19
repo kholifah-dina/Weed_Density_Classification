@@ -538,8 +538,9 @@ def page_training():
 
                 def style_ig(row):
                     if row['Dipilih'] == '✅ Dipilih':
-                        return ['background-color: #e8f8f5; font-weight: bold'] * len(row)
-                    return ['color: #aaa'] * len(row)
+                        # rgba background = semi-transparan, kontras di light & dark mode
+                        return ['background-color: rgba(46,204,113,0.18); color: #1e8449; font-weight: bold'] * len(row)
+                    return ['color: #888888'] * len(row)
 
                 st.dataframe(
                     ig_df.style.apply(style_ig, axis=1).format({'IG Score': '{:.4f}'}),
@@ -557,9 +558,16 @@ def page_training():
                 df_selected.index += 1
                 df_selected_display = df_selected[['Nama Fitur', 'IG Score']].copy()
                 df_selected_display.index.name = 'No'
+                def _style_selected(row):
+                    max_s = df_selected_display['IG Score'].max()
+                    alpha = 0.1 + 0.35 * (row['IG Score'] / max_s if max_s > 0 else 0)
+                    bg = f'rgba(46,204,113,{alpha:.2f})'
+                    style = f'background-color: {bg}; color: #1e8449; font-weight: bold'
+                    return [style] * len(row)
+
                 st.dataframe(
-                    df_selected_display.style.format({'IG Score': '{:.4f}'})
-                    .background_gradient(subset=['IG Score'], cmap='Greens'),
+                    df_selected_display.style.apply(_style_selected, axis=1)
+                    .format({'IG Score': '{:.4f}'}),
                     use_container_width=True,
                     height=int(N_SELECT_BEST * 38 + 40),
                 )
@@ -595,8 +603,13 @@ def page_training():
                 df_19.index.name = "No"
 
                 def _color_group(val):
-                    palette = {"RGB": "#d5f5e3", "HSV": "#d6eaf8", "Hu Moments": "#fdebd0"}
-                    return f"background-color: {palette.get(val, '')}; font-weight: bold"
+                    # rgba background + explicit teks kontras → bekerja di light & dark mode
+                    palette = {
+                        "RGB":        "background-color: rgba(46,204,113,0.20); color: #1e8449; font-weight: bold",
+                        "HSV":        "background-color: rgba(52,152,219,0.20); color: #1a6fa6; font-weight: bold",
+                        "Hu Moments": "background-color: rgba(230,126,34,0.20);  color: #b7580a; font-weight: bold",
+                    }
+                    return palette.get(val, '')
 
                 st.dataframe(
                     df_19.style.applymap(_color_group, subset=["Kelompok"]),
