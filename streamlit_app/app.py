@@ -279,18 +279,19 @@ def page_training():
             "untuk melatih model klasifikasi."
         )
         MAX = 190
+        st.info("📎 Format yang diterima: **JPG / JPEG** · Maksimal **190 gambar per kelas** · Minimal **9 gambar per kelas**")
         c1, c2, c3 = st.columns(3)
         with c1:
             st.markdown("**🟢 Renggang** — Populasi gulma jarang")
-            renggang = st.file_uploader("Upload Kelas Renggang", type=['jpg','jpeg'],
+            renggang = st.file_uploader("Upload Kelas Renggang (maks. 190 gambar, JPG)", type=['jpg','jpeg'],
                                          accept_multiple_files=True, key="up_renggang")
         with c2:
             st.markdown("**🟡 Sedang** — Perlu pemantauan")
-            sedang = st.file_uploader("Upload Kelas Sedang", type=['jpg','jpeg'],
+            sedang = st.file_uploader("Upload Kelas Sedang (maks. 190 gambar, JPG)", type=['jpg','jpeg'],
                                        accept_multiple_files=True, key="up_sedang")
         with c3:
             st.markdown("**🔴 Padat** — Perlu penanganan segera")
-            padat = st.file_uploader("Upload Kelas Padat", type=['jpg','jpeg'],
+            padat = st.file_uploader("Upload Kelas Padat (maks. 190 gambar, JPG)", type=['jpg','jpeg'],
                                       accept_multiple_files=True, key="up_padat")
 
         for files, label in [(renggang,"Renggang"),(sedang,"Sedang"),(padat,"Padat")]:
