@@ -24,7 +24,6 @@ from predict import (
     FEATURE_NAMES_19,
     FEATURE_NAMES_39,
     MODEL_SHORT,
-    N_FEATURES_WITHOUT_GLCM,
     N_SELECT_BEST,
     _compute_sample_weights,
     _split_80_10_10,
@@ -505,15 +504,16 @@ def page_training():
                     "Kolom 'Kelas' adalah label kelas asli gambar."
                 )
 
-            # ── IG table + bar chart ──────────────────────────────────────
+            # ── Hasil IG (mode 39) atau daftar fitur (mode 19) ───────────
             if mode_c == '39' and ig_df is not None:
-                st.markdown(f"#### 📊 Hasil Information Gain — Seleksi {N_SELECT_BEST} Fitur Terbaik dari 39")
-                st.markdown(
-                    "Information Gain mengukur seberapa besar setiap fitur membantu memisahkan kelas "
-                    "Renggang, Sedang, dan Padat. Semakin tinggi skornya, semakin penting fitur tersebut."
-                )
+                sel_names = st.session_state.get('train_sel_names', [])
 
-                # Bar chart IG
+                # ── Bar chart IG ──────────────────────────────────────────
+                st.markdown(f"#### 📊 Grafik Information Gain — Seleksi {N_SELECT_BEST} Fitur Terbaik dari 39")
+                st.markdown(
+                    "Information Gain mengukur seberapa besar setiap fitur membantu memisahkan kelas. "
+                    "Batang **hijau** = dipilih · Batang **abu-abu** = tidak dipilih."
+                )
                 fig_ig = px.bar(
                     ig_df,
                     x='IG Score', y='Nama Fitur',
@@ -524,7 +524,7 @@ def page_training():
                 )
                 fig_ig.update_layout(
                     yaxis={'categoryorder': 'total ascending'},
-                    height=600,
+                    height=620,
                     legend_title_text='Status Fitur',
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
@@ -532,28 +532,79 @@ def page_training():
                     yaxis_title='Nama Fitur',
                 )
                 st.plotly_chart(fig_ig, use_container_width=True)
-                st.caption(
-                    "Batang hijau = fitur yang dipilih masuk ke model. "
-                    "Batang abu-abu = fitur yang tidak dipilih karena IG Score lebih rendah. "
-                    "Urutan dari bawah ke atas: fitur paling informatif di atas."
-                )
 
-                # Tabel ranking
+                # ── Tabel ranking semua 39 fitur ──────────────────────────
+                st.markdown("#### 📋 Tabel Ranking Semua 39 Fitur berdasarkan Information Gain")
+
                 def style_ig(row):
                     if row['Dipilih'] == '✅ Dipilih':
                         return ['background-color: #e8f8f5; font-weight: bold'] * len(row)
                     return ['color: #aaa'] * len(row)
 
-                with st.expander("📋 Lihat Tabel Lengkap Ranking Semua Fitur"):
-                    st.dataframe(
-                        ig_df.style.apply(style_ig, axis=1).format({'IG Score': '{:.4f}'}),
-                        use_container_width=True, height=350,
-                    )
+                st.dataframe(
+                    ig_df.style.apply(style_ig, axis=1).format({'IG Score': '{:.4f}'}),
+                    use_container_width=True, height=400,
+                )
+                st.caption("Baris hijau tebal = fitur yang masuk ke model. Diurutkan dari IG Score tertinggi.")
 
-                sel_names = st.session_state.get('train_sel_names', [])
-                st.success(f"✅ **{N_SELECT_BEST} Fitur Terpilih:** {', '.join(f'`{n}`' for n in sel_names)}")
+                # ── Tabel 14 fitur terpilih ───────────────────────────────
+                st.markdown(f"#### ✅ {N_SELECT_BEST} Fitur Terpilih untuk Pelatihan Model")
+                st.markdown(
+                    f"Berikut adalah **{N_SELECT_BEST} fitur** dengan Information Gain tertinggi "
+                    "yang akan digunakan sebagai input model klasifikasi:"
+                )
+                df_selected = ig_df[ig_df['Dipilih'] == '✅ Dipilih'].reset_index(drop=True)
+                df_selected.index += 1
+                df_selected_display = df_selected[['Nama Fitur', 'IG Score']].copy()
+                df_selected_display.index.name = 'No'
+                st.dataframe(
+                    df_selected_display.style.format({'IG Score': '{:.4f}'})
+                    .background_gradient(subset=['IG Score'], cmap='Greens'),
+                    use_container_width=True,
+                    height=int(N_SELECT_BEST * 38 + 40),
+                )
+                st.success(f"✅ **{N_SELECT_BEST} Fitur:** {', '.join(f'`{n}`' for n in sel_names)}")
+
             else:
-                st.info(f"Semua **{N_FEATURES_WITHOUT_GLCM} fitur** digunakan langsung (tanpa seleksi).")
+                # ── Tabel 19 fitur (mode tanpa GLCM) ─────────────────────
+                st.markdown("#### 📋 Daftar 19 Fitur yang Digunakan")
+                st.markdown("Semua 19 fitur berikut digunakan langsung sebagai input model tanpa seleksi:")
+                _feat_19_meta = [
+                    ("R_mean",      "RGB",        "Rata-rata intensitas kanal Merah"),
+                    ("G_mean",      "RGB",        "Rata-rata intensitas kanal Hijau"),
+                    ("B_mean",      "RGB",        "Rata-rata intensitas kanal Biru"),
+                    ("R_std",       "RGB",        "Standar deviasi kanal Merah"),
+                    ("G_std",       "RGB",        "Standar deviasi kanal Hijau"),
+                    ("B_std",       "RGB",        "Standar deviasi kanal Biru"),
+                    ("H_mean",      "HSV",        "Rata-rata Hue (warna dominan)"),
+                    ("S_mean",      "HSV",        "Rata-rata Saturation (kepekatan warna)"),
+                    ("V_mean",      "HSV",        "Rata-rata Value (kecerahan)"),
+                    ("H_std",       "HSV",        "Standar deviasi Hue"),
+                    ("S_std",       "HSV",        "Standar deviasi Saturation"),
+                    ("V_std",       "HSV",        "Standar deviasi Value"),
+                    ("HuMoment_1",  "Hu Moments", "Momen Hu ke-1 — invariant skala & rotasi"),
+                    ("HuMoment_2",  "Hu Moments", "Momen Hu ke-2"),
+                    ("HuMoment_3",  "Hu Moments", "Momen Hu ke-3"),
+                    ("HuMoment_4",  "Hu Moments", "Momen Hu ke-4"),
+                    ("HuMoment_5",  "Hu Moments", "Momen Hu ke-5"),
+                    ("HuMoment_6",  "Hu Moments", "Momen Hu ke-6"),
+                    ("HuMoment_7",  "Hu Moments", "Momen Hu ke-7 — invariant refleksi"),
+                ]
+                df_19 = pd.DataFrame(_feat_19_meta, columns=["Nama Fitur", "Kelompok", "Deskripsi"])
+                df_19.index += 1
+                df_19.index.name = "No"
+
+                def _color_group(val):
+                    palette = {"RGB": "#d5f5e3", "HSV": "#d6eaf8", "Hu Moments": "#fdebd0"}
+                    return f"background-color: {palette.get(val, '')}; font-weight: bold"
+
+                st.dataframe(
+                    df_19.style.applymap(_color_group, subset=["Kelompok"]),
+                    use_container_width=True,
+                    height=int(19 * 38 + 40),
+                )
+                st.caption("Hijau = RGB · Biru = HSV · Oranye = Hu Moments. Semua 19 fitur langsung masuk ke model.")
+                st.success("✅ **19 Fitur** digunakan langsung tanpa seleksi Information Gain.")
 
     # ══ STEP 4 — Pilih & Latih Model ═════════════════════════════════
     if step >= 4:
