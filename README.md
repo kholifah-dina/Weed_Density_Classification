@@ -36,10 +36,12 @@ Sistem menggunakan **4 menu sidebar** yang bisa diakses langsung tanpa login:
 
 | Menu | Fungsi |
 |------|--------|
-| 📚 Alur Pelatihan | Training model langkah demi langkah dengan visualisasi preprocessing |
-| 🎯 Pengujian Gambar | Upload 1 gambar → pilih model → lihat prediksi + metrik |
-| 🔬 Eksperimen Parameter | Tuning hyperparameter, analisis pengaruh parameter terhadap performa |
-| 📊 Dashboard Hasil | Rekap semua hasil model + eksperimen dalam bentuk tabel & grafik |
+| 📚 Alur Pelatihan | Training model 4 langkah dengan visualisasi preprocessing, tabel ekstraksi fitur, dan grafik Information Gain |
+| 🎯 Pengujian Gambar | Upload 1 gambar → pilih model → prediksi + nilai fitur + metrik + Confusion Matrix |
+| 🔬 Eksperimen Parameter | Tuning hyperparameter dengan progress real-time, grafik metrik, dan Classification Report |
+| 📊 Dashboard Hasil | Rekap preprocessing, perbandingan semua model, dan grafik semua eksperimen |
+
+> Mendukung **Light Mode** dan **Dark Mode** — warna teks dan elemen UI menyesuaikan tema secara otomatis.
 
 ---
 
@@ -52,7 +54,7 @@ weed-density-app/
 ├── runtime.txt                       # Versi Python (3.10)
 ├── .gitignore                        # File yang dikecualikan dari git
 ├── README.md                         # Dokumentasi ini
-├── PANDUAN_PENGGUNAAN.md             # Panduan penggunaan lengkap (11 seksi)
+├── PANDUAN_PENGGUNAAN.md             # Panduan penggunaan lengkap
 │
 └── streamlit_app/
     ├── app.py                        # UI Streamlit — 4 menu sidebar
@@ -194,38 +196,95 @@ File berikut sudah dikecualikan via `.gitignore`:
 
 ### 📚 Alur Pelatihan (Training)
 
-1. Buka **📚 Alur Pelatihan** di sidebar
-2. **Langkah 1** — Upload gambar 3 kelas (Renggang, Sedang, Padat) · format JPG/JPEG · maks 190/kelas
-3. **Langkah 2** — Lihat visualisasi 4 tahap preprocessing dengan penjelasan
-4. **Langkah 3** — Pilih mode fitur:
-   - **19 Fitur** (RGB + HSV + Hu Moments) — tanpa GLCM
-   - **39 Fitur** (GLCM + RGB + HSV + Hu) → Information Gain memilih 14 terbaik
-5. **Langkah 4** — Pilih algoritma (DT / LR / SVM / RF / GB) → klik **Latih**
-6. Model tersimpan otomatis sebagai `models/GB.joblib`, `models/RF.joblib`, dll.
-7. Ulangi Langkah 4 untuk melatih model lain tanpa perlu upload ulang
+Proses training dibagi menjadi **4 langkah berurutan** yang harus diikuti secara urut:
+
+#### Langkah 1 — Upload Dataset Gambar
+
+- Upload gambar untuk **3 kelas**: Renggang, Sedang, Padat
+- Format yang diterima: **JPG / JPEG**
+- **Minimal 9 gambar per kelas** (syarat untuk stratified split 80:10:10)
+- **Maksimal 190 gambar per kelas**
+- Sistem otomatis menampilkan ringkasan jumlah gambar per kelas
+
+#### Langkah 2 — Visualisasi Preprocessing
+
+Sistem menampilkan **4 tahap preprocessing** dari contoh gambar kelas Padat:
+
+| Tahap | Proses |
+|-------|--------|
+| ① Resize 224×224 | Menyamakan ukuran semua gambar |
+| ② Gaussian Blur (5×5) | Meredam noise untuk segmentasi akurat |
+| ③ HSV Thresholding | Isolasi piksel hijau (H:25–75°, S:40–255, V:50–255) |
+| ④ Morphological Closing | Mengisi celah pada mask gulma |
+
+#### Langkah 3 — Ekstraksi Fitur
+
+Pilih salah satu mode fitur:
+
+| Mode | Fitur | Seleksi | Input ke Model |
+|------|-------|---------|---------------|
+| **19 Fitur** | RGB mean/std (6) + HSV mean/std (6) + Hu Moments (7) | Tidak ada | 19 fitur langsung |
+| **39 Fitur** | GLCM 5×4 sudut (20) + RGB/HSV/Hu (19) | Information Gain | 14 fitur terbaik |
+
+Setelah klik **Jalankan Ekstraksi**, sistem menampilkan:
+- **Tabel contoh hasil ekstraksi** — 3 sampel per kelas dalam bentuk vektor numerik
+- **Mode 39 Fitur:**
+  - Grafik bar chart Information Gain (hijau = dipilih, abu-abu = tidak dipilih)
+  - Tabel ranking semua 39 fitur berdasarkan IG Score
+  - Tabel 14 fitur terpilih dengan gradient warna IG Score
+- **Mode 19 Fitur:**
+  - Tabel daftar 19 fitur dengan kelompok (RGB / HSV / Hu Moments) dan deskripsi
+
+> 📌 14 fitur terpilih bersifat **dinamis** — ditentukan otomatis oleh Information Gain berdasarkan dataset yang digunakan.
+
+#### Langkah 4 — Pilih Algoritma & Latih Model
+
+- Pilih algoritma dari dropdown: DT / LR / SVM / RF / GB
+- Klik **Latih** — model disimpan otomatis ke `models/{NAMA}.joblib`
+- Hasil langsung ditampilkan: metrik 6 kolom + Confusion Matrix
+- Ulangi dengan algoritma berbeda tanpa perlu upload ulang gambar
+
+---
 
 ### 🎯 Pengujian Gambar (Testing)
 
 1. Buka **🎯 Pengujian Gambar**
 2. Upload 1 gambar gulma (JPG/JPEG)
-3. Lihat hasil preprocessing otomatis
+3. Lihat visualisasi 4 tahap preprocessing otomatis
 4. Pilih model dari dropdown (hanya model yang sudah dilatih)
-5. Baca hasil prediksi: **Renggang / Sedang / Padat**
-6. Lihat metrik evaluasi + Confusion Matrix model tersebut
-7. Ganti model di dropdown untuk membandingkan hasil
+5. Sistem menampilkan:
+   - Tabel nilai semua fitur yang diekstrak dari gambar
+   - **Hasil prediksi**: Renggang / Sedang / Padat dengan warna dan deskripsi
+   - **Metrik evaluasi** model (Accuracy, Precision, Recall, F1-Score, Val Accuracy)
+   - **Confusion Matrix** interaktif dengan caption penjelasan
+6. Ganti model di dropdown untuk membandingkan prediksi semua model pada gambar yang sama
+
+---
 
 ### 🔬 Eksperimen Parameter
 
 1. Buka **🔬 Eksperimen Parameter**
-2. Pilih mode fitur (19 atau 39)
-3. Pilih model dan nilai parameter yang ingin diuji
-4. Klik **Jalankan Eksperimen** — hasil terakumulasi
-5. Lihat tabel metrik, grafik, Confusion Matrix, Classification Report
+2. Pilih mode fitur (19 atau 39 fitur)
+3. Pilih model dan nilai parameter yang ingin diuji (multiselect)
+4. Klik **Jalankan Eksperimen** — progress tampil real-time dengan label bersih per iterasi
+5. Hasil ditampilkan:
+   - Tabel metrik semua kombinasi (baris terbaik di-highlight hijau)
+   - Grafik tren metrik vs nilai parameter (line/bar chart)
+   - Confusion Matrix parameter terbaik
+   - Classification Report dalam expander
+
+> 💡 Hasil eksperimen terakumulasi — jalankan beberapa kali untuk membandingkan kombinasi parameter berbeda. Klik **Hapus Riwayat** untuk menghapus hasil model tertentu.
+
+---
 
 ### 📊 Dashboard Hasil
 
 1. Buka **📊 Dashboard Hasil**
-2. Lihat rekap preprocessing, perbandingan semua model, grafik semua eksperimen
+2. Lihat rekap lengkap:
+   - **Rekap Preprocessing** — penjelasan 4 tahap + contoh gambar hasil dari training terakhir
+   - **Perbandingan Semua Model** — tabel + bar chart Accuracy/Precision/Recall/F1 semua model terlatih
+   - **Confusion Matrix semua model** dalam expander
+   - **Grafik semua eksperimen** per model
 3. Cocok untuk laporan, presentasi, atau sidang skripsi
 
 > 📖 Untuk panduan detail setiap menu, lihat [PANDUAN_PENGGUNAAN.md](PANDUAN_PENGGUNAAN.md)
@@ -267,6 +326,7 @@ File berikut sudah dikecualikan via `.gitignore`:
             │            predict.py            │
             │  StandardScaler (normalisasi)    │
             │  Split 80:10:10 (stratified)     │
+            │  Min. 9 sampel/kelas             │
             │                                  │
             │  5 Algoritma (tiap disimpan      │
             │  terpisah sebagai .joblib):      │
@@ -290,8 +350,6 @@ File berikut sudah dikecualikan via `.gitignore`:
 |------|-------------------|---------|---------------|
 | Tanpa GLCM | 19 | Tidak ada | 19 fitur langsung |
 | Dengan GLCM | 39 | Information Gain (LAN) | 14 fitur terbaik |
-
-> 📌 14 fitur terpilih bersifat **dinamis** — ditentukan otomatis oleh Information Gain berdasarkan dataset yang digunakan. Fitur berbeda bisa terpilih pada dataset yang berbeda.
 
 ### Dataset
 
@@ -327,6 +385,10 @@ File berikut sudah dikecualikan via `.gitignore`:
 ### "Belum ada model yang tersedia"
 File `.joblib` belum ada — buka menu **📚 Alur Pelatihan** dan latih minimal satu model.
 
+### "Setiap kelas membutuhkan minimal 9 gambar"
+Stratified split 80:10:10 membutuhkan minimal **9 gambar per kelas** (27 total).  
+Tambah gambar hingga setiap kelas memiliki minimal 9 gambar, lalu ulangi dari Langkah 1.
+
 ### Error install: `ERROR: Could not build wheels for opencv`
 ```bash
 pip install opencv-python-headless   # gunakan versi headless (tanpa GUI)
@@ -344,10 +406,13 @@ pip install -r requirements.txt
 ```
 
 ### Hasil eksperimen hilang setelah refresh browser
-Hasil eksperimen disimpan di session (memori browser) — simpan screenshot sebelum refresh.
+Hasil eksperimen disimpan di session state (memori tab browser) — simpan screenshot atau catat hasilnya sebelum menutup/refresh halaman.
 
 ### Training sangat lambat
-Normal untuk Random Forest (500 pohon) dan Gradient Boosting (300 iterasi). Tunggu hingga selesai.
+Normal untuk Random Forest (500 pohon) dan Gradient Boosting (300 iterasi). Tunggu hingga selesai. Progress ditampilkan real-time di status box.
+
+### Grafik tidak terbaca di Dark Mode
+Semua grafik menggunakan background transparan dan elemen UI memiliki CSS dark mode override otomatis. Pastikan menggunakan Streamlit versi terbaru (`streamlit >= 1.28`).
 
 > 📖 Troubleshooting lebih lengkap ada di [PANDUAN_PENGGUNAAN.md](PANDUAN_PENGGUNAAN.md)
 
