@@ -172,6 +172,7 @@ _defaults = {
     'train_splits':      None,       # dict splits X/y
     'train_result':      None,       # hasil training terakhir
     'train_sample_steps': None,      # preprocessing steps dari 1 sample
+    'train_feat_sample': None,       # sample DataFrame hasil ekstraksi fitur
     # Menu 3 — Eksperimen
     'exp_history':       [],         # list semua hasil eksperimen
     # Menu 2 — Testing
@@ -369,7 +370,7 @@ def page_training():
 
         feat_mode = st.radio(
             "Mode Fitur:",
-            options=["19 Fitur (RGB + HSV + Hu Moments)", "39 Fitur (GLCM + RGB + HSV + Hu Moments) ← Disarankan"],
+            options=["19 Fitur (RGB + HSV + Hu Moments)", "39 Fitur (GLCM + RGB + HSV + Hu Moments)"],
             index=1 if st.session_state['train_feat_mode'] == '39' else 0,
             key="feat_mode_radio",
         )
@@ -437,6 +438,17 @@ def page_training():
                 X_val_sc    = scaler.transform(X_val_sel)
                 X_test_sc   = scaler.transform(X_test_sel)
 
+                # Simpan sample hasil ekstraksi (3 baris per kelas) untuk ditampilkan
+                feat_cols_raw = FEATURE_NAMES_39 if mode_code == '39' else FEATURE_NAMES_19
+                df_feat_all   = pd.DataFrame(X_all, columns=feat_cols_raw)
+                df_feat_all['Kelas'] = y_all
+                df_feat_sample = (
+                    df_feat_all.groupby('Kelas', group_keys=False)
+                    .head(3)
+                    .reset_index(drop=True)
+                )
+                st.session_state['train_feat_sample'] = df_feat_sample
+
                 st.session_state['train_feat_mode']  = mode_code
                 st.session_state['train_ig_df']      = ig_df
                 st.session_state['train_sel_names']  = sel_names
@@ -455,12 +467,13 @@ def page_training():
                 st.session_state['train_step'] = 4
                 st.rerun()
 
-        # Tampilkan hasil IG jika sudah di step 4
+        # Tampilkan hasil ekstraksi + IG jika sudah di step 4
         if step >= 4:
-            ig_df   = st.session_state.get('train_ig_df')
-            splits  = st.session_state.get('train_splits', {})
-            si      = splits.get('split_info', {})
-            mode_c  = st.session_state['train_feat_mode']
+            ig_df       = st.session_state.get('train_ig_df')
+            splits      = st.session_state.get('train_splits', {})
+            si          = splits.get('split_info', {})
+            mode_c      = st.session_state['train_feat_mode']
+            df_feat_smp = st.session_state.get('train_feat_sample')
 
             if si:
                 st.markdown(
@@ -472,22 +485,70 @@ def page_training():
                     unsafe_allow_html=True,
                 )
 
+            # ── Tabel sample hasil ekstraksi fitur ───────────────────────
+            if df_feat_smp is not None:
+                n_feat_cols = len(df_feat_smp.columns) - 1  # exclude 'Kelas'
+                st.markdown(f"#### 🧬 Contoh Hasil Ekstraksi Fitur ({n_feat_cols} Fitur)")
+                st.markdown(
+                    "Tabel berikut menampilkan **3 sampel per kelas** setelah preprocessing dan ekstraksi fitur. "
+                    "Setiap baris merepresentasikan satu gambar dalam bentuk vektor numerik."
+                )
+                fmt_dict = {c: '{:.4f}' for c in df_feat_smp.columns if c != 'Kelas'}
+                st.dataframe(
+                    df_feat_smp.style.format(fmt_dict),
+                    use_container_width=True,
+                    height=230,
+                )
+                st.caption(
+                    "Nilai setiap kolom adalah fitur numerik hasil ekstraksi dari area gulma yang tersegmentasi. "
+                    "Kolom 'Kelas' adalah label kelas asli gambar."
+                )
+
+            # ── IG table + bar chart ──────────────────────────────────────
             if mode_c == '39' and ig_df is not None:
-                st.markdown(f"#### 📊 Tabel Ranking Fitur — Information Gain ({N_SELECT_BEST} Terpilih dari 39)")
+                st.markdown(f"#### 📊 Hasil Information Gain — Seleksi {N_SELECT_BEST} Fitur Terbaik dari 39")
                 st.markdown(
                     "Information Gain mengukur seberapa besar setiap fitur membantu memisahkan kelas "
                     "Renggang, Sedang, dan Padat. Semakin tinggi skornya, semakin penting fitur tersebut."
                 )
 
+                # Bar chart IG
+                fig_ig = px.bar(
+                    ig_df,
+                    x='IG Score', y='Nama Fitur',
+                    orientation='h',
+                    color='Dipilih',
+                    color_discrete_map={'✅ Dipilih': '#2ecc71', '❌ Tidak Dipilih': '#bdc3c7'},
+                    title=f'Information Gain Score — {N_SELECT_BEST} Fitur Terpilih (hijau)',
+                )
+                fig_ig.update_layout(
+                    yaxis={'categoryorder': 'total ascending'},
+                    height=600,
+                    legend_title_text='Status Fitur',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    xaxis_title='Information Gain Score',
+                    yaxis_title='Nama Fitur',
+                )
+                st.plotly_chart(fig_ig, use_container_width=True)
+                st.caption(
+                    "Batang hijau = fitur yang dipilih masuk ke model. "
+                    "Batang abu-abu = fitur yang tidak dipilih karena IG Score lebih rendah. "
+                    "Urutan dari bawah ke atas: fitur paling informatif di atas."
+                )
+
+                # Tabel ranking
                 def style_ig(row):
                     if row['Dipilih'] == '✅ Dipilih':
                         return ['background-color: #e8f8f5; font-weight: bold'] * len(row)
                     return ['color: #aaa'] * len(row)
 
-                st.dataframe(
-                    ig_df.style.apply(style_ig, axis=1).format({'IG Score': '{:.4f}'}),
-                    use_container_width=True, height=350,
-                )
+                with st.expander("📋 Lihat Tabel Lengkap Ranking Semua Fitur"):
+                    st.dataframe(
+                        ig_df.style.apply(style_ig, axis=1).format({'IG Score': '{:.4f}'}),
+                        use_container_width=True, height=350,
+                    )
+
                 sel_names = st.session_state.get('train_sel_names', [])
                 st.success(f"✅ **{N_SELECT_BEST} Fitur Terpilih:** {', '.join(f'`{n}`' for n in sel_names)}")
             else:
@@ -603,7 +664,7 @@ def page_training():
         if st.button("🔄 Mulai Ulang dari Langkah 1", key="btn_reset"):
             for k in ['train_images','train_step','train_feat_mode','train_ig_df',
                       'train_sel_names','train_scaler','train_selector',
-                      'train_splits','train_result','train_sample_steps']:
+                      'train_splits','train_result','train_sample_steps','train_feat_sample']:
                 st.session_state[k] = _defaults.get(k)
             st.session_state['train_step'] = 1
             st.rerun()
