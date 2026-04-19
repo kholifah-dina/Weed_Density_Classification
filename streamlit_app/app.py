@@ -1335,48 +1335,6 @@ def page_dashboard():
     else:
         st.info("Belum ada hasil eksperimen. Kunjungi menu **🔬 Eksperimen Parameter**.")
 
-    # ── SEKSI 4: Penjelasan Sistem ───────────────────────────────────────
-    st.markdown("---")
-    st.markdown("## 📖 Penjelasan Sistem (untuk Pembaca Umum)")
-    with st.expander("Apa itu Klasifikasi Kepadatan Gulma?", expanded=False):
-        st.markdown("""
-        **Gulma** adalah tanaman liar yang tumbuh di sekitar tanaman utama dan dapat mengganggu
-        pertumbuhan serta mengurangi hasil panen. Sistem ini mengklasifikasikan lahan menjadi 3 tingkat:
-        - 🟢 **Renggang** — Gulma sedikit, tidak perlu tindakan segera.
-        - 🟡 **Sedang** — Gulma mulai banyak, perlu dipantau dan direncanakan penanganannya.
-        - 🔴 **Padat** — Gulma sangat banyak, perlu penanganan segera agar tidak merusak tanaman.
-        """)
-    with st.expander("Apa itu HSV Thresholding?", expanded=False):
-        st.markdown("""
-        **HSV** (Hue, Saturation, Value) adalah cara merepresentasikan warna yang lebih mendekati
-        persepsi manusia dibandingkan RGB. Dalam sistem ini:
-        - **Hue 25–75°** merepresentasikan rentang warna hijau (warna gulma).
-        - Piksel yang masuk rentang ini dianggap sebagai area gulma dan dipertahankan.
-        - Piksel di luar rentang (tanah, langit, dll.) dibuang menjadi hitam.
-        Teknik ini disebut **Segmentasi Warna** — memisahkan objek berdasarkan warnanya.
-        """)
-    with st.expander("Apa itu GLCM dan Information Gain?", expanded=False):
-        st.markdown("""
-        **GLCM** (Gray-Level Co-occurrence Matrix) mengukur **tekstur** gambar — seberapa sering
-        pasangan piksel dengan nilai tertentu muncul berdekatan. Dari GLCM diekstrak 5 properti:
-        Contrast (kekasaran), Dissimilarity (perbedaan), Homogeneity (keseragaman),
-        Energy (keseragaman kuadrat), dan Correlation (keterkaitan antar piksel),
-        masing-masing dari 4 sudut (0°, 45°, 90°, 135°) = **20 fitur GLCM**.
-
-        **Information Gain (LAN)** adalah teknik seleksi fitur yang mengukur seberapa besar
-        setiap fitur membantu membedakan kelas. Dari 39 fitur, dipilih **14 fitur terbaik**
-        yang paling informatif untuk klasifikasi gulma.
-        """)
-    with st.expander("Apa itu Gradient Boosting?", expanded=False):
-        st.markdown("""
-        **Gradient Boosting** adalah metode ensemble yang membangun model secara bertahap (sequential).
-        Setiap model baru dilatih untuk memperbaiki kesalahan model sebelumnya. Proses ini diulang
-        sebanyak **300 kali** (n_estimators=300) dengan kecepatan belajar (learning_rate=0.1).
-        Hasilnya adalah model yang sangat akurat karena setiap iterasi fokus pada kasus yang sulit.
-        Model ini dipilih sebagai **model utama penelitian** karena menghasilkan akurasi tertinggi.
-        """)
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
