@@ -1,5 +1,6 @@
 import os
 import time
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -323,7 +324,11 @@ def page_training():
                 # Ambil 1 sample gambar dari kelas Padat untuk visualisasi
                 sample_bytes = st.session_state['train_images']['Padat'][0]
                 with st.spinner("Memproses gambar sample…"):
-                    st.session_state['train_sample_steps'] = preprocess_image_with_steps(image_bytes=sample_bytes)
+                    _sample_steps = preprocess_image_with_steps(image_bytes=sample_bytes)
+                if _sample_steps is None:
+                    st.error("Gagal memproses gambar sample dari kelas Padat. Pastikan file tidak rusak.")
+                    st.stop()
+                st.session_state['train_sample_steps'] = _sample_steps
                 st.session_state['train_step'] = 2
                 st.rerun()
 
@@ -407,7 +412,6 @@ def page_training():
                     st.error("Tidak ada fitur yang berhasil diekstrak. Periksa gambar yang diupload.")
                     st.stop()
 
-                from collections import Counter
                 MIN_PER_CLASS = 9
                 class_counts = Counter(y_all)
                 min_count = min(class_counts.values())
@@ -612,7 +616,7 @@ def page_training():
                     return palette.get(val, '')
 
                 st.dataframe(
-                    df_19.style.applymap(_color_group, subset=["Kelompok"]),
+                    df_19.style.map(_color_group, subset=["Kelompok"]),
                     use_container_width=True,
                     height=int(19 * 38 + 40),
                 )
@@ -1093,7 +1097,7 @@ def page_experiments():
         best_row = df_res.loc[best_idx]
 
         def _hl_best(row):
-            return (['background-color:#2ecc71; color:white; font-weight:bold'] * len(row)
+            return (['background-color:rgba(46,204,113,0.25); color:#1e8449; font-weight:bold'] * len(row)
                     if row.name == best_idx else [''] * len(row))
 
         st.dataframe(
