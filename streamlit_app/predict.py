@@ -300,3 +300,103 @@ def load_csv_for_experiment(csv_path, feature_mode='39'):
     else:
         names_19 = FEATURE_NAMES_19[:n_feat]
         return X_all, y_all, None, names_19, None
+
+
+# ─── Dynamic training (per-parameter, sequential IDs) ─────────────────────────
+
+ALGO_FULL_NAME = {
+    'LR':  'Logistic Regression',
+    'SVM': 'SVM',
+    'DT':  'Decision Tree',
+    'RF':  'Random Forest',
+    'GB':  'Gradient Boosting',
+}
+
+
+def train_with_custom_params(algo_short, params, X_train_sc, X_val_sc, X_test_sc,
+                              y_train, y_val, y_test):
+    """
+    Train a model with a specific params dict.
+    algo_short: 'LR' | 'SVM' | 'DT' | 'RF' | 'GB'
+    params: e.g. {'max_iter': 100}, {'kernel': 'rbf'}, {'n_estimators': 200, 'learning_rate': 0.1}
+    Returns: (fitted_model, metrics_dict, cm_dict)
+    """
+    if algo_short == 'LR':
+        model = LogisticRegression(
+            max_iter=params['max_iter'], solver='lbfgs',
+            random_state=42, class_weight='balanced',
+        )
+    elif algo_short == 'SVM':
+        model = SVC(
+            kernel=params['kernel'], probability=True,
+            random_state=42, class_weight='balanced',
+        )
+    elif algo_short == 'DT':
+        model = DecisionTreeClassifier(
+            max_depth=params['max_depth'], random_state=42, class_weight='balanced',
+        )
+    elif algo_short == 'RF':
+        model = RandomForestClassifier(
+            n_estimators=params['n_estimators'], random_state=42, class_weight='balanced',
+        )
+    elif algo_short == 'GB':
+        model = GradientBoostingClassifier(
+            n_estimators=params['n_estimators'],
+            learning_rate=params['learning_rate'],
+            random_state=42,
+        )
+    else:
+        raise ValueError(f"Unknown algo_short: {algo_short}")
+
+    t0 = time.time()
+    if algo_short == 'GB':
+        sw = _compute_sample_weights(y_train)
+        model.fit(X_train_sc, y_train, sample_weight=sw)
+    else:
+        model.fit(X_train_sc, y_train)
+    exec_time = round(time.time() - t0, 4)
+
+    y_pred_val  = model.predict(X_val_sc)
+    y_pred_test = model.predict(X_test_sc)
+    unique_labels = sorted(set(y_train) | set(y_test))
+
+    metrics = {
+        'Accuracy':           round(accuracy_score(y_test, y_pred_test), 4),
+        'Precision':          round(precision_score(y_test, y_pred_test, average='macro', zero_division=0), 4),
+        'Recall':             round(recall_score(y_test, y_pred_test, average='macro', zero_division=0), 4),
+        'F1-Score':           round(f1_score(y_test, y_pred_test, average='macro', zero_division=0), 4),
+        'Val Accuracy':       round(accuracy_score(y_val, y_pred_val), 4),
+        'Execution Time (s)': exec_time,
+    }
+    cm = {
+        'matrix': confusion_matrix(y_test, y_pred_test, labels=unique_labels),
+        'labels': unique_labels,
+    }
+    return model, metrics, cm
+
+
+def save_trained_bundle(model_id, bundle_data):
+    """Save bundle as TRAINED_{model_id}.joblib."""
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    joblib.dump(bundle_data, os.path.join(MODEL_DIR, f"TRAINED_{model_id}.joblib"))
+
+
+def load_trained_bundle(model_id):
+    """Load bundle by model_id from TRAINED_{model_id}.joblib."""
+    path = os.path.join(MODEL_DIR, f"TRAINED_{model_id}.joblib")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Model '{model_id}' tidak ditemukan di disk.")
+    return joblib.load(path)
+
+
+def cleanup_non_top5(top5_ids):
+    """Delete TRAINED_xxx.joblib files whose IDs are not in top5_ids."""
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    for fname in os.listdir(MODEL_DIR):
+        if fname.startswith("TRAINED_") and fname.endswith(".joblib"):
+            mid = fname[8:-7]
+            if mid not in top5_ids:
+                try:
+                    os.remove(os.path.join(MODEL_DIR, fname))
+                except OSError:
+                    pass
