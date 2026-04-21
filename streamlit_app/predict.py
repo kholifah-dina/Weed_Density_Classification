@@ -7,7 +7,7 @@ from sklearn.feature_selection import SelectKBest, mutual_info_classif
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 )
@@ -373,6 +373,75 @@ def train_with_custom_params(algo_short, params, X_train_sc, X_val_sc, X_test_sc
         'labels': unique_labels,
     }
     return model, metrics, cm
+
+
+def train_stacking_model(base_algo_short, base_params, gb_params,
+                         X_train_sc, X_val_sc, X_test_sc,
+                         y_train, y_val, y_test):
+    """
+    Latih Stacking model: base estimator (LR/SVM/DT/RF) + GB sebagai meta-learner.
+    base_algo_short : 'LR' | 'SVM' | 'DT' | 'RF'
+    base_params     : dict params model baseline (ambil dari params terbaik)
+    gb_params       : dict {'n_estimators': int, 'learning_rate': float}
+    Returns: (fitted_stacking_model, metrics_dict, cm_dict)
+    """
+    if base_algo_short == 'LR':
+        base_est = LogisticRegression(
+            max_iter=base_params.get('max_iter', 100), solver='lbfgs',
+            random_state=42, class_weight='balanced',
+        )
+    elif base_algo_short == 'SVM':
+        base_est = SVC(
+            kernel=base_params.get('kernel', 'rbf'), probability=True,
+            random_state=42, class_weight='balanced',
+        )
+    elif base_algo_short == 'DT':
+        base_est = DecisionTreeClassifier(
+            max_depth=base_params.get('max_depth', 5),
+            random_state=42, class_weight='balanced',
+        )
+    elif base_algo_short == 'RF':
+        base_est = RandomForestClassifier(
+            n_estimators=base_params.get('n_estimators', 100),
+            random_state=42, class_weight='balanced',
+        )
+    else:
+        raise ValueError(f"Unsupported base_algo_short for stacking: {base_algo_short}")
+
+    meta_learner = GradientBoostingClassifier(
+        n_estimators=gb_params.get('n_estimators', 100),
+        learning_rate=gb_params.get('learning_rate', 0.1),
+        random_state=42,
+    )
+
+    stacking = StackingClassifier(
+        estimators=[('base', base_est)],
+        final_estimator=meta_learner,
+        cv=5,
+        passthrough=True,
+    )
+
+    t0 = time.time()
+    stacking.fit(X_train_sc, y_train)
+    exec_time = round(time.time() - t0, 4)
+
+    y_pred_val  = stacking.predict(X_val_sc)
+    y_pred_test = stacking.predict(X_test_sc)
+    unique_labels = sorted(set(y_train) | set(y_test))
+
+    metrics = {
+        'Accuracy':           round(accuracy_score(y_test, y_pred_test), 4),
+        'Precision':          round(precision_score(y_test, y_pred_test, average='macro', zero_division=0), 4),
+        'Recall':             round(recall_score(y_test, y_pred_test, average='macro', zero_division=0), 4),
+        'F1-Score':           round(f1_score(y_test, y_pred_test, average='macro', zero_division=0), 4),
+        'Val Accuracy':       round(accuracy_score(y_val, y_pred_val), 4),
+        'Execution Time (s)': exec_time,
+    }
+    cm = {
+        'matrix': confusion_matrix(y_test, y_pred_test, labels=unique_labels),
+        'labels': unique_labels,
+    }
+    return stacking, metrics, cm
 
 
 def save_trained_bundle(model_id, bundle_data):

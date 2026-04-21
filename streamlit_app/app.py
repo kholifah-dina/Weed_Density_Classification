@@ -17,6 +17,7 @@ from predict import (
     prepare_features_from_images,
     run_inference,
     save_trained_bundle,
+    train_stacking_model,
     train_with_custom_params,
 )
 from preprocessing import preprocess_image_with_steps
@@ -153,7 +154,8 @@ _defaults = {
     'train_splits':       None,
     'train_feat_sample':  None,
     # Training history (persists when step is reset)
-    'algo_counters':      {'LR': 0, 'SVM': 0, 'DT': 0, 'RF': 0, 'GB': 0},
+    'algo_counters':      {'LR': 0, 'SVM': 0, 'DT': 0, 'RF': 0, 'GB': 0,
+                           'LRGB': 0, 'SVMGB': 0, 'DTGB': 0, 'RFGB': 0},
     'model_run_history':  [],
     'top5_model_ids':     [],
     'best_per_algo':      {},
@@ -176,6 +178,24 @@ ALGO_SHORT_MAP = {
 }
 ALGO_SHORT_MAP_INV = {v: k for k, v in ALGO_SHORT_MAP.items()}
 
+COMBO_SHORT_MAP = {
+    'LR + GB':  'LRGB',
+    'SVM + GB': 'SVMGB',
+    'DT + GB':  'DTGB',
+    'RF + GB':  'RFGB',
+}
+# Unified label lookup: algo_short → display label (single + combo)
+ALL_ALGO_LABELS = {
+    **ALGO_SHORT_MAP_INV,
+    **{v: k for k, v in COMBO_SHORT_MAP.items()},
+}
+COMBO_DEFS = [
+    ('LR',  'Logistic Regression', 'LRGB'),
+    ('SVM', 'SVM',                 'SVMGB'),
+    ('DT',  'Decision Tree',       'DTGB'),
+    ('RF',  'Random Forest',       'RFGB'),
+]
+
 # ──────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ──────────────────────────────────────────────────────────────────────────────
@@ -194,7 +214,7 @@ with st.sidebar:
     if top5_ids_sidebar:
         st.markdown("**💾 Model Terbaik per Algoritma:**")
         for algo_short, mid in best_per_algo_map.items():
-            algo_label = ALGO_SHORT_MAP_INV.get(algo_short, algo_short)
+            algo_label = ALL_ALGO_LABELS.get(algo_short, algo_short)
             st.markdown(
                 f"<span class='top5-badge'>🏆 {mid}</span> "
                 f"<span style='font-size:11px;color:#888;'>({algo_label})</span>",
@@ -610,164 +630,304 @@ def page_pemodelan():
             st.error("Data training belum siap. Kembali ke Langkah 3.")
             return
 
-        # ── Algorithm selector ────────────────────────────────────────
-        algo_full = st.selectbox(
-            "Pilih Algoritma:",
-            list(ALGO_SHORT_MAP.keys()),
-            key="step4_algo",
-        )
-        algo_short = ALGO_SHORT_MAP[algo_full]
-
-        algo_desc = {
-            'Logistic Regression': "Model linear sederhana — sangat cepat, baseline yang kuat.",
-            'SVM':                 "Support Vector Machine — efektif untuk data high-dimensional.",
-            'Decision Tree':       "Pohon keputusan — mudah diinterpretasi, cepat dilatih.",
-            'Random Forest':       "Ensemble 100–500 pohon — robust terhadap overfitting.",
-            'Gradient Boosting':   "Model utama penelitian — ensemble sequential, akurasi tinggi.",
-        }
-        st.markdown(
-            f"<div class='info-box'>💡 <b>{algo_full}:</b> {algo_desc[algo_full]}</div>",
-            unsafe_allow_html=True,
-        )
-
-        # ── Parameter selector (multi-select, fixed values per skripsi) ──
+        # ── Training mode tabs ────────────────────────────────────────
         import itertools as _it
-        param_combos: list[dict] = []
-        param_strs:   list[str]  = []
+        tab_single, tab_combo = st.tabs([
+            "🔵 Algoritma Tunggal",
+            "🔗 Kombinasi Baseline + GB",
+        ])
 
-        if algo_full == 'Logistic Regression':
-            sel_vals = st.multiselect(
-                "max_iter: (pilih satu atau lebih)",
-                [100, 300, 500, 700, 1000], default=[100], key="p_lr_maxiter",
+        # ════════════════════════════════════════════════════════════
+        # TAB 1 — Algoritma Tunggal
+        # ════════════════════════════════════════════════════════════
+        with tab_single:
+            algo_full = st.selectbox(
+                "Pilih Algoritma:",
+                list(ALGO_SHORT_MAP.keys()),
+                key="step4_algo",
             )
-            param_combos = [{'max_iter': v} for v in sel_vals]
-            param_strs   = [f"max_iter={v}" for v in sel_vals]
+            algo_short = ALGO_SHORT_MAP[algo_full]
 
-        elif algo_full == 'SVM':
-            sel_vals = st.multiselect(
-                "kernel: (pilih satu atau lebih)",
-                ["linear", "rbf", "poly"], default=["linear"], key="p_svm_kernel",
+            algo_desc = {
+                'Logistic Regression': "Model linear sederhana — sangat cepat, baseline yang kuat.",
+                'SVM':                 "Support Vector Machine — efektif untuk data high-dimensional.",
+                'Decision Tree':       "Pohon keputusan — mudah diinterpretasi, cepat dilatih.",
+                'Random Forest':       "Ensemble 100–500 pohon — robust terhadap overfitting.",
+                'Gradient Boosting':   "Model utama penelitian — ensemble sequential, akurasi tinggi.",
+            }
+            st.markdown(
+                f"<div class='info-box'>💡 <b>{algo_full}:</b> {algo_desc[algo_full]}</div>",
+                unsafe_allow_html=True,
             )
-            param_combos = [{'kernel': v} for v in sel_vals]
-            param_strs   = [f"kernel={v}" for v in sel_vals]
 
-        elif algo_full == 'Decision Tree':
-            sel_vals = st.multiselect(
-                "max_depth: (pilih satu atau lebih)",
-                [3, 5, 7, 9, 11], default=[3], key="p_dt_depth",
-            )
-            param_combos = [{'max_depth': v} for v in sel_vals]
-            param_strs   = [f"max_depth={v}" for v in sel_vals]
+            param_combos: list[dict] = []
+            param_strs:   list[str]  = []
 
-        elif algo_full == 'Random Forest':
-            sel_vals = st.multiselect(
-                "n_estimators: (pilih satu atau lebih)",
-                [100, 200, 300, 400, 500], default=[100], key="p_rf_nest",
-            )
-            param_combos = [{'n_estimators': v} for v in sel_vals]
-            param_strs   = [f"n_estimators={v}" for v in sel_vals]
+            if algo_full == 'Logistic Regression':
+                sel_vals = st.multiselect(
+                    "max_iter: (pilih satu atau lebih)",
+                    [100, 300, 500, 700, 1000], default=[100], key="p_lr_maxiter",
+                )
+                param_combos = [{'max_iter': v} for v in sel_vals]
+                param_strs   = [f"max_iter={v}" for v in sel_vals]
 
-        elif algo_full == 'Gradient Boosting':
-            c1p, c2p = st.columns(2)
-            with c1p:
-                sel_nest = st.multiselect(
+            elif algo_full == 'SVM':
+                sel_vals = st.multiselect(
+                    "kernel: (pilih satu atau lebih)",
+                    ["linear", "rbf", "poly"], default=["linear"], key="p_svm_kernel",
+                )
+                param_combos = [{'kernel': v} for v in sel_vals]
+                param_strs   = [f"kernel={v}" for v in sel_vals]
+
+            elif algo_full == 'Decision Tree':
+                sel_vals = st.multiselect(
+                    "max_depth: (pilih satu atau lebih)",
+                    [3, 5, 7, 9, 11], default=[3], key="p_dt_depth",
+                )
+                param_combos = [{'max_depth': v} for v in sel_vals]
+                param_strs   = [f"max_depth={v}" for v in sel_vals]
+
+            elif algo_full == 'Random Forest':
+                sel_vals = st.multiselect(
                     "n_estimators: (pilih satu atau lebih)",
-                    [100, 200, 300], default=[100], key="p_gb_nest",
+                    [100, 200, 300, 400, 500], default=[100], key="p_rf_nest",
                 )
-            with c2p:
-                sel_lr = st.multiselect(
-                    "learning_rate: (pilih satu atau lebih)",
-                    [0.01, 0.1, 1], default=[0.01], key="p_gb_lr",
-                )
-            combos       = list(_it.product(sel_nest, sel_lr))
-            param_combos = [{'n_estimators': ne, 'learning_rate': lr} for ne, lr in combos]
-            param_strs   = [f"n_estimators={ne}, lr={lr}" for ne, lr in combos]
+                param_combos = [{'n_estimators': v} for v in sel_vals]
+                param_strs   = [f"n_estimators={v}" for v in sel_vals]
 
-        # ── Preview model IDs ─────────────────────────────────────────
-        n_combos  = len(param_combos)
-        cur_count = st.session_state['algo_counters'].get(algo_short, 0)
-        if n_combos == 0:
-            preview_label = "—"
-            btn_label     = None
-        elif n_combos == 1:
-            preview_label = f"{algo_short}{cur_count + 1}"
-            btn_label     = f"🚀 Latih {preview_label} ({param_strs[0]})"
-        else:
-            preview_ids   = ", ".join(f"{algo_short}{cur_count+i+1}" for i in range(n_combos))
-            preview_label = preview_ids
-            btn_label     = f"🚀 Latih {n_combos} model sekaligus: {preview_ids}"
-
-        st.markdown(
-            f"<div style='font-size:13px;color:#888;margin-bottom:8px;'>"
-            f"Model yang akan dibuat: <b style='color:#2ecc71;'>{preview_label}</b></div>",
-            unsafe_allow_html=True,
-        )
-
-        if n_combos == 0:
-            st.warning("⚠️ Pilih minimal satu nilai parameter untuk melatih model.")
-
-        # ── Train button (loop per combo) ─────────────────────────────
-        if n_combos > 0 and st.button(btn_label, use_container_width=True, key="btn_train"):
-            feat_mode_used = st.session_state.get('train_feat_mode', '19')
-            sel_names_used = st.session_state.get('train_sel_names') or FEATURE_NAMES_19
-            trained_ids: list[str] = []
-
-            for params, param_str in zip(param_combos, param_strs):
-                cur_count = st.session_state['algo_counters'].get(algo_short, 0)
-                model_id  = f"{algo_short}{cur_count + 1}"
-                with st.spinner(f"Melatih {model_id} — {param_str}…"):
-                    mdl, metrics, cm_data = train_with_custom_params(
-                        algo_short, params,
-                        splits['X_train_sc'], splits['X_val_sc'], splits['X_test_sc'],
-                        splits['y_train'],    splits['y_val'],    splits['y_test'],
+            elif algo_full == 'Gradient Boosting':
+                c1p, c2p = st.columns(2)
+                with c1p:
+                    sel_nest = st.multiselect(
+                        "n_estimators: (pilih satu atau lebih)",
+                        [100, 200, 300], default=[100], key="p_gb_nest",
                     )
-                st.session_state['algo_counters'][algo_short] = cur_count + 1
-                bundle = {
-                    'model':            mdl,
-                    'scaler':           st.session_state['train_scaler'],
-                    'selector':         st.session_state.get('train_selector'),
-                    'feature_mode':     feat_mode_used,
-                    'features_used':    sel_names_used,
-                    'n_features':       len(sel_names_used),
-                    'metrics':          metrics,
-                    'confusion_matrix': cm_data,
-                    'split_info':       splits['split_info'],
-                    'model_id':         model_id,
-                    'algo_short':       algo_short,
-                    'algo_full':        algo_full,
-                    'param_str':        param_str,
-                    'params':           params,
-                }
-                save_trained_bundle(model_id, bundle)
-                st.session_state['model_run_history'].append({
-                    'model_id':   model_id,
-                    'algo_short': algo_short,
-                    'algo_full':  algo_full,
-                    'param_str':  param_str,
-                    'metrics':    metrics,
-                    'cm':         cm_data,
-                    'feat_mode':  feat_mode_used,
-                })
-                trained_ids.append(model_id)
+                with c2p:
+                    sel_lr = st.multiselect(
+                        "learning_rate: (pilih satu atau lebih)",
+                        [0.01, 0.1, 1], default=[0.01], key="p_gb_lr",
+                    )
+                combos       = list(_it.product(sel_nest, sel_lr))
+                param_combos = [{'n_estimators': ne, 'learning_rate': lr} for ne, lr in combos]
+                param_strs   = [f"n_estimators={ne}, lr={lr}" for ne, lr in combos]
 
-            _update_top5()
-            top5_ids_now  = st.session_state['top5_model_ids']
-            best_algo_map = st.session_state.get('best_per_algo', {})
-            new_best      = best_algo_map.get(algo_short, '—')
-            if any(mid in top5_ids_now for mid in trained_ids):
-                st.success(
-                    f"✅ {len(trained_ids)} model berhasil dilatih: **{', '.join(trained_ids)}**. "
-                    f"Model terbaik {algo_full}: **{new_best}** 🏆"
-                )
+            n_combos  = len(param_combos)
+            cur_count = st.session_state['algo_counters'].get(algo_short, 0)
+            if n_combos == 0:
+                preview_label = "—"
+                btn_label     = None
+            elif n_combos == 1:
+                preview_label = f"{algo_short}{cur_count + 1}"
+                btn_label     = f"🚀 Latih {preview_label} ({param_strs[0]})"
             else:
-                st.success(
-                    f"✅ {len(trained_ids)} model berhasil dilatih: **{', '.join(trained_ids)}**."
+                preview_ids   = ", ".join(f"{algo_short}{cur_count+i+1}" for i in range(n_combos))
+                preview_label = preview_ids
+                btn_label     = f"🚀 Latih {n_combos} model sekaligus: {preview_ids}"
+
+            st.markdown(
+                f"<div style='font-size:13px;color:#888;margin-bottom:8px;'>"
+                f"Model yang akan dibuat: <b style='color:#2ecc71;'>{preview_label}</b></div>",
+                unsafe_allow_html=True,
+            )
+            if n_combos == 0:
+                st.warning("⚠️ Pilih minimal satu nilai parameter untuk melatih model.")
+
+            if n_combos > 0 and st.button(btn_label, use_container_width=True, key="btn_train"):
+                feat_mode_used = st.session_state.get('train_feat_mode', '19')
+                sel_names_used = st.session_state.get('train_sel_names') or FEATURE_NAMES_19
+                trained_ids: list[str] = []
+
+                for params, param_str in zip(param_combos, param_strs):
+                    cur_count = st.session_state['algo_counters'].get(algo_short, 0)
+                    model_id  = f"{algo_short}{cur_count + 1}"
+                    with st.spinner(f"Melatih {model_id} — {param_str}…"):
+                        mdl, metrics, cm_data = train_with_custom_params(
+                            algo_short, params,
+                            splits['X_train_sc'], splits['X_val_sc'], splits['X_test_sc'],
+                            splits['y_train'],    splits['y_val'],    splits['y_test'],
+                        )
+                    st.session_state['algo_counters'][algo_short] = cur_count + 1
+                    bundle = {
+                        'model':            mdl,
+                        'scaler':           st.session_state['train_scaler'],
+                        'selector':         st.session_state.get('train_selector'),
+                        'feature_mode':     feat_mode_used,
+                        'features_used':    sel_names_used,
+                        'n_features':       len(sel_names_used),
+                        'metrics':          metrics,
+                        'confusion_matrix': cm_data,
+                        'split_info':       splits['split_info'],
+                        'model_id':         model_id,
+                        'algo_short':       algo_short,
+                        'algo_full':        algo_full,
+                        'param_str':        param_str,
+                        'params':           params,
+                    }
+                    save_trained_bundle(model_id, bundle)
+                    st.session_state['model_run_history'].append({
+                        'model_id':   model_id,
+                        'algo_short': algo_short,
+                        'algo_full':  algo_full,
+                        'param_str':  param_str,
+                        'metrics':    metrics,
+                        'cm':         cm_data,
+                        'feat_mode':  feat_mode_used,
+                        'params':     params,
+                    })
+                    trained_ids.append(model_id)
+
+                _update_top5()
+                top5_ids_now  = st.session_state['top5_model_ids']
+                best_algo_map = st.session_state.get('best_per_algo', {})
+                new_best      = best_algo_map.get(algo_short, '—')
+                if any(mid in top5_ids_now for mid in trained_ids):
+                    st.success(
+                        f"✅ {len(trained_ids)} model berhasil dilatih: **{', '.join(trained_ids)}**. "
+                        f"Model terbaik {algo_full}: **{new_best}** 🏆"
+                    )
+                else:
+                    st.success(
+                        f"✅ {len(trained_ids)} model berhasil dilatih: **{', '.join(trained_ids)}**."
+                    )
+                    st.info(
+                        f"Model terbaik {algo_full} saat ini: **{new_best}**. "
+                        f"Model terbaik per algoritma: {', '.join(top5_ids_now)}"
+                    )
+                st.rerun()
+
+        # ════════════════════════════════════════════════════════════
+        # TAB 2 — Kombinasi Baseline + GB
+        # ════════════════════════════════════════════════════════════
+        with tab_combo:
+            st.markdown(
+                "Gunakan **parameter terbaik** dari masing-masing algoritma baseline yang sudah "
+                "dilatih, digabung dengan Gradient Boosting sebagai meta-learner (Stacking). "
+                "Latih baseline dan GB di tab **Algoritma Tunggal** terlebih dahulu."
+            )
+
+            history_combo    = st.session_state.get('model_run_history', [])
+            best_per_algo_c  = st.session_state.get('best_per_algo', {})
+            feat_mode_c      = st.session_state.get('train_feat_mode', '19')
+            sel_names_c      = st.session_state.get('train_sel_names') or FEATURE_NAMES_19
+
+            best_gb_id  = best_per_algo_c.get('GB')
+            best_gb_run = next(
+                (r for r in history_combo if r['model_id'] == best_gb_id), None
+            ) if best_gb_id else None
+
+            if not best_gb_run:
+                st.warning(
+                    "⚠️ **Gradient Boosting** belum dilatih. "
+                    "Latih GB di tab Algoritma Tunggal terlebih dahulu."
                 )
-                st.info(
-                    f"Model terbaik {algo_full} saat ini: **{new_best}**. "
-                    f"Model terbaik per algoritma: {', '.join(top5_ids_now)}"
-                )
-            st.rerun()
+
+            for base_short, base_full, combo_short in COMBO_DEFS:
+                st.markdown("---")
+                best_base_id  = best_per_algo_c.get(base_short)
+                best_base_run = next(
+                    (r for r in history_combo if r['model_id'] == best_base_id), None
+                ) if best_base_id else None
+
+                ready     = best_base_run is not None and best_gb_run is not None
+                cur_cnt_c = st.session_state['algo_counters'].get(combo_short, 0)
+                next_id_c = f"{combo_short}{cur_cnt_c + 1}"
+
+                c_info, c_btn = st.columns([3, 1])
+                with c_info:
+                    st.markdown(f"#### 🔗 {base_full} + GB")
+                    if ready:
+                        base_params_c = best_base_run.get('params', {})
+                        gb_params_c   = best_gb_run.get('params', {})
+                        st.markdown(
+                            f"<div class='info-box'>"
+                            f"📌 <b>Base ({base_short}):</b> {best_base_id} "
+                            f"— {best_base_run['param_str']}<br>"
+                            f"📌 <b>Meta (GB):</b> {best_gb_id} "
+                            f"— {best_gb_run['param_str']}<br>"
+                            f"🆔 ID berikutnya: "
+                            f"<b style='color:#2ecc71;'>{next_id_c}</b>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        missing = []
+                        if not best_base_run:
+                            missing.append(f"**{base_full}**")
+                        if not best_gb_run:
+                            missing.append("**Gradient Boosting**")
+                        st.warning(
+                            f"⚠️ Latih {' dan '.join(missing)} "
+                            "di tab Algoritma Tunggal terlebih dahulu."
+                        )
+
+                with c_btn:
+                    st.markdown("<br><br>", unsafe_allow_html=True)
+                    if st.button(
+                        f"🚀 Latih {next_id_c}" if ready else "🔒 Belum siap",
+                        key=f"btn_combo_{combo_short}",
+                        disabled=not ready,
+                        use_container_width=True,
+                    ) and ready:
+                        base_params_c   = best_base_run.get('params', {})
+                        gb_params_c     = best_gb_run.get('params', {})
+                        combo_param_str = (
+                            f"{best_base_run['param_str']} + {best_gb_run['param_str']}"
+                        )
+                        with st.spinner(
+                            f"Melatih {next_id_c} "
+                            f"(Stacking: {base_full} + GB)… ini mungkin memakan waktu lebih lama."
+                        ):
+                            mdl_c, metrics_c, cm_c = train_stacking_model(
+                                base_short, base_params_c, gb_params_c,
+                                splits['X_train_sc'], splits['X_val_sc'], splits['X_test_sc'],
+                                splits['y_train'],    splits['y_val'],    splits['y_test'],
+                            )
+
+                        model_id_c = next_id_c
+                        st.session_state['algo_counters'][combo_short] = cur_cnt_c + 1
+
+                        bundle_c = {
+                            'model':            mdl_c,
+                            'scaler':           st.session_state['train_scaler'],
+                            'selector':         st.session_state.get('train_selector'),
+                            'feature_mode':     feat_mode_c,
+                            'features_used':    sel_names_c,
+                            'n_features':       len(sel_names_c),
+                            'metrics':          metrics_c,
+                            'confusion_matrix': cm_c,
+                            'split_info':       splits['split_info'],
+                            'model_id':         model_id_c,
+                            'algo_short':       combo_short,
+                            'algo_full':        f"{base_full} + GB",
+                            'param_str':        combo_param_str,
+                            'params':           {'base': base_params_c, 'gb': gb_params_c},
+                        }
+                        save_trained_bundle(model_id_c, bundle_c)
+                        st.session_state['model_run_history'].append({
+                            'model_id':   model_id_c,
+                            'algo_short': combo_short,
+                            'algo_full':  f"{base_full} + GB",
+                            'param_str':  combo_param_str,
+                            'metrics':    metrics_c,
+                            'cm':         cm_c,
+                            'feat_mode':  feat_mode_c,
+                            'params':     {'base': base_params_c, 'gb': gb_params_c},
+                        })
+                        _update_top5()
+                        top5_now_c    = st.session_state['top5_model_ids']
+                        best_map_c    = st.session_state.get('best_per_algo', {})
+                        best_combo_id = best_map_c.get(combo_short, '—')
+                        if model_id_c in top5_now_c:
+                            st.success(
+                                f"✅ **{model_id_c}** ({base_full} + GB) berhasil dilatih! "
+                                f"Accuracy: {metrics_c['Accuracy']:.4f} 🏆"
+                            )
+                        else:
+                            st.success(
+                                f"✅ **{model_id_c}** berhasil dilatih. "
+                                f"Terbaik {combo_short}: **{best_combo_id}**"
+                            )
+                        st.rerun()
 
         # ── Recap table ───────────────────────────────────────────────
         history = st.session_state.get('model_run_history', [])
@@ -838,8 +998,12 @@ def page_pemodelan():
         with col_r2:
             if st.button("🗑️ Hapus Semua Riwayat Pelatihan", key="btn_reset_history"):
                 st.session_state['model_run_history'] = []
-                st.session_state['algo_counters']     = {'LR': 0, 'SVM': 0, 'DT': 0, 'RF': 0, 'GB': 0}
+                st.session_state['algo_counters']     = {
+                    'LR': 0, 'SVM': 0, 'DT': 0, 'RF': 0, 'GB': 0,
+                    'LRGB': 0, 'SVMGB': 0, 'DTGB': 0, 'RFGB': 0,
+                }
                 st.session_state['top5_model_ids']    = []
+                st.session_state['best_per_algo']     = {}
                 cleanup_non_top5([])
                 st.rerun()
 
