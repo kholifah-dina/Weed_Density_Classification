@@ -926,11 +926,26 @@ def _render_impl_history():
     )
 
     # ── Summary table per model ────────────────────────────────────────
-    summary_rows = {
+    summary_rows: dict[str, list] = {
         'Jumlah TRUE':  [run['true_count'] for run in runs],
         'Jumlah FALSE': [run['false_count'] for run in runs],
-        'Presisinya':   [f"{run['presisi'] * 100:.0f}%" for run in runs],
+        'Total Gambar': [run['n_gambar'] for run in runs],
+        'Presisinya':   [f"{run['presisi'] * 100:.1f}%" for run in runs],
     }
+    # Per-class breakdown rows (only if any run has class_breakdown)
+    all_classes_seen: set[str] = set()
+    for run in runs:
+        all_classes_seen.update(run.get('class_breakdown', {}).keys())
+    for kelas in _CLASSES:
+        if kelas not in all_classes_seen:
+            continue
+        icon = _CLASS_ICON.get(kelas, '')
+        row_vals = []
+        for run in runs:
+            bd = run.get('class_breakdown', {}).get(kelas)
+            row_vals.append(f"{bd['true']}/{bd['total']}" if bd else '—')
+        summary_rows[f"{icon} Benar {kelas}"] = row_vals
+
     df_summary = pd.DataFrame(
         summary_rows,
         index=[run['model_id'] for run in runs],
@@ -986,11 +1001,16 @@ def _render_impl_history():
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE 2 — IMPLEMENTASI
 # ──────────────────────────────────────────────────────────────────────────────
+_MAX_PER_CLASS = 50
+_CLASSES       = ['Renggang', 'Sedang', 'Padat']
+_CLASS_ICON    = {'Renggang': '🟢', 'Sedang': '🟡', 'Padat': '🔴'}
+
+
 def page_implementasi():
     st.title("🎯 Implementasi — Evaluasi Model")
     st.markdown(
-        "Pilih model dari Top 5 hasil pemodelan, upload gambar (maks. 10), tentukan label aktual "
-        "secara manual, lalu klik **Uji Model** untuk melihat hasil evaluasi."
+        "Pilih model terbaik hasil pemodelan, upload gambar uji per kelas (maks. 50/kelas), "
+        "lalu klik **Uji Model**. Label aktual otomatis dari zona upload — tidak perlu pilih manual."
     )
 
     top5_ids = st.session_state.get('top5_model_ids', [])
@@ -1005,7 +1025,7 @@ def page_implementasi():
     # ── Model selector ────────────────────────────────────────────────
     st.markdown("### 🤖 Pilih Model")
     selected_id = st.selectbox(
-        "Model (dari Top 5 hasil pemodelan):",
+        "Model (dari model terbaik per algoritma):",
         top5_ids,
         key="impl_model_select",
     )
@@ -1035,89 +1055,146 @@ def page_implementasi():
         unsafe_allow_html=True,
     )
 
-    # ── Batch upload ──────────────────────────────────────────────────
+    # ── Upload per kelas ──────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### 📤 Upload Gambar Uji (Maks. 10 Gambar)")
-    st.info("📎 Format: **JPG / JPEG** · Maksimal **10 gambar** per pengujian")
-    uploaded_files = st.file_uploader(
-        "Upload gambar uji:",
-        type=['jpg', 'jpeg'],
-        accept_multiple_files=True,
-        key="impl_upload",
+    st.markdown("### 📤 Upload Gambar Uji per Kelas")
+    st.info(
+        f"📎 Format: **JPG / JPEG** · Maks. **{_MAX_PER_CLASS} gambar per kelas** "
+        f"(total maks. {_MAX_PER_CLASS * 3} gambar) · "
+        "Label aktual **otomatis** dari zona upload — tidak perlu pilih manual"
     )
 
-    if uploaded_files:
-        files_to_test = uploaded_files[:10]
-        if len(uploaded_files) > 10:
-            st.warning(
-                f"Hanya 10 gambar pertama yang diproses ({len(uploaded_files)} gambar diupload)."
+    col_r, col_s, col_p = st.columns(3)
+    upload_zones: dict[str, list] = {}
+
+    for col, kelas in zip([col_r, col_s, col_p], _CLASSES):
+        with col:
+            icon = _CLASS_ICON[kelas]
+            st.markdown(f"**{icon} {kelas}**")
+            files = st.file_uploader(
+                f"Upload gambar {kelas}:",
+                type=['jpg', 'jpeg'],
+                accept_multiple_files=True,
+                key=f"impl_upload_{kelas.lower()}",
+                label_visibility="collapsed",
             )
-
-        # ── Ground truth labels ───────────────────────────────────────
-        st.markdown("---")
-        st.markdown("### 🏷️ Tentukan Label Aktual")
-        st.markdown(
-            "Untuk setiap gambar, pilih label aktual yang sudah Anda identifikasi secara visual:"
-        )
-
-        n_cols    = min(len(files_to_test), 5)
-        grid_cols = st.columns(n_cols)
-        label_map = {}
-        for i, f in enumerate(files_to_test):
-            col = grid_cols[i % n_cols]
-            with col:
-                f.seek(0)
-                st.image(f.read(), caption=f.name, use_container_width=True)
-                label_map[i] = st.selectbox(
-                    f"Label #{i + 1}",
-                    ["Renggang", "Sedang", "Padat"],
-                    key=f"impl_label_{i}",
+            files = files or []
+            trimmed = files[:_MAX_PER_CLASS]
+            if len(files) > _MAX_PER_CLASS:
+                st.warning(f"Diambil {_MAX_PER_CLASS} pertama ({len(files)} diupload).")
+            upload_zones[kelas] = trimmed
+            if trimmed:
+                st.markdown(
+                    f"<div style='font-size:13px;color:#27ae60;font-weight:600;'>"
+                    f"✅ {len(trimmed)} gambar siap</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<div style='font-size:12px;color:#aaa;'>Belum ada gambar</div>",
+                    unsafe_allow_html=True,
                 )
 
-        # ── Uji button ────────────────────────────────────────────────
-        st.markdown("---")
-        if st.button("🔍 Uji Model", use_container_width=True, key="btn_impl_test"):
-            results = []
-            errors  = []
-            with st.spinner(f"Mengklasifikasikan {len(files_to_test)} gambar dengan {selected_id}…"):
-                for i, f in enumerate(files_to_test):
-                    f.seek(0)
-                    img_bytes = f.read()
-                    try:
-                        prediction, _, _ = run_inference(bundle, img_bytes)
-                    except Exception as e:
-                        errors.append(f"Gambar {f.name}: {e}")
-                        continue
-                    aktual = label_map[i]
-                    hasil  = prediction == aktual
-                    results.append({
-                        'no':       i + 1,
-                        'gambar':   f.name,
-                        'aktual':   aktual,
-                        'prediksi': prediction,
-                        'hasil':    'TRUE' if hasil else 'FALSE',
-                    })
+    # ── Summary count ─────────────────────────────────────────────────
+    all_entries: list[tuple] = []   # (file, aktual_label)
+    for kelas, files in upload_zones.items():
+        for f in files:
+            all_entries.append((f, kelas))
 
-            if errors:
-                for err in errors:
-                    st.error(f"⚠️ {err}")
+    total = len(all_entries)
+    n_r   = len(upload_zones['Renggang'])
+    n_s   = len(upload_zones['Sedang'])
+    n_p   = len(upload_zones['Padat'])
 
-            if results:
-                true_count  = sum(1 for r in results if r['hasil'] == 'TRUE')
-                false_count = len(results) - true_count
-                presisi     = true_count / len(results)
+    if total > 0:
+        est_detik = max(5, round(total * 0.4))
+        st.markdown(
+            f"<div class='info-box'>"
+            f"📊 <b>Total gambar siap diuji: {total}</b> — "
+            f"🟢 Renggang: {n_r} · 🟡 Sedang: {n_s} · 🔴 Padat: {n_p} &nbsp;|&nbsp; "
+            f"⏱️ Estimasi waktu: ~{est_detik} detik"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            "<div class='info-box' style='color:#aaa;'>"
+            "Upload gambar ke minimal satu zona kelas untuk mulai pengujian."
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
-                st.session_state['impl_test_runs'].append({
-                    'model_id':    selected_id,
-                    'algo':        bundle.get('algo_full', '?'),
-                    'param_str':   bundle.get('param_str', '?'),
-                    'results':     results,
-                    'true_count':  true_count,
-                    'false_count': false_count,
-                    'presisi':     presisi,
-                    'n_gambar':    len(results),
-                })
-                st.rerun()
+    # ── Uji button ────────────────────────────────────────────────────
+    st.markdown("---")
+    if total == 0:
+        st.button("🔍 Uji Model", use_container_width=True, key="btn_impl_test", disabled=True)
+    elif st.button("🔍 Uji Model", use_container_width=True, key="btn_impl_test"):
+        results: list[dict] = []
+        errors:  list[str]  = []
+
+        prog_bar    = st.progress(0)
+        status_text = st.empty()
+
+        for idx, (f, aktual) in enumerate(all_entries):
+            status_text.markdown(
+                f"<div style='font-size:13px;color:#888;'>"
+                f"Mengklasifikasi gambar {idx + 1} / {total}: "
+                f"<b>{f.name}</b> ({aktual})</div>",
+                unsafe_allow_html=True,
+            )
+            prog_bar.progress((idx + 1) / total)
+
+            f.seek(0)
+            img_bytes = f.read()
+            try:
+                prediction, _, _ = run_inference(bundle, img_bytes)
+            except Exception as e:
+                errors.append(f"{f.name}: {e}")
+                continue
+
+            results.append({
+                'no':       idx + 1,
+                'gambar':   f.name,
+                'aktual':   aktual,
+                'prediksi': prediction,
+                'hasil':    'TRUE' if prediction == aktual else 'FALSE',
+            })
+
+        prog_bar.empty()
+        status_text.empty()
+
+        if errors:
+            for err in errors:
+                st.error(f"⚠️ {err}")
+
+        if results:
+            true_count  = sum(1 for r in results if r['hasil'] == 'TRUE')
+            false_count = len(results) - true_count
+            presisi     = true_count / len(results)
+
+            # Per-class breakdown
+            class_breakdown: dict[str, dict] = {}
+            for kelas in _CLASSES:
+                kelas_results = [r for r in results if r['aktual'] == kelas]
+                if kelas_results:
+                    k_true = sum(1 for r in kelas_results if r['hasil'] == 'TRUE')
+                    class_breakdown[kelas] = {
+                        'true':  k_true,
+                        'total': len(kelas_results),
+                    }
+
+            st.session_state['impl_test_runs'].append({
+                'model_id':        selected_id,
+                'algo':            bundle.get('algo_full', '?'),
+                'param_str':       bundle.get('param_str', '?'),
+                'results':         results,
+                'true_count':      true_count,
+                'false_count':     false_count,
+                'presisi':         presisi,
+                'n_gambar':        len(results),
+                'class_breakdown': class_breakdown,
+            })
+            st.rerun()
 
     _render_impl_history()
 
