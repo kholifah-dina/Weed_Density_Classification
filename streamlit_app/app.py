@@ -156,6 +156,7 @@ _defaults = {
     'algo_counters':      {'LR': 0, 'SVM': 0, 'DT': 0, 'RF': 0, 'GB': 0},
     'model_run_history':  [],
     'top5_model_ids':     [],
+    'best_per_algo':      {},
     # Implementasi
     'impl_test_runs':     [],
 }
@@ -176,13 +177,19 @@ with st.sidebar:
     )
     st.markdown("---")
 
-    top5_ids_sidebar = st.session_state.get('top5_model_ids', [])
+    top5_ids_sidebar  = st.session_state.get('top5_model_ids', [])
+    best_per_algo_map = st.session_state.get('best_per_algo', {})
     if top5_ids_sidebar:
-        st.markdown("**💾 Top 5 Model Tersimpan:**")
-        for mid in top5_ids_sidebar:
-            st.markdown(f"<span class='top5-badge'>🏆 {mid}</span>", unsafe_allow_html=True)
+        st.markdown("**💾 Model Terbaik per Algoritma:**")
+        for algo_short, mid in best_per_algo_map.items():
+            algo_label = ALGO_SHORT_MAP_INV.get(algo_short, algo_short)
+            st.markdown(
+                f"<span class='top5-badge'>🏆 {mid}</span> "
+                f"<span style='font-size:11px;color:#888;'>({algo_label})</span>",
+                unsafe_allow_html=True,
+            )
     else:
-        st.markdown("<span style='font-size:12px;color:#aaa;'>Belum ada model Top 5</span>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:12px;color:#aaa;'>Belum ada model tersimpan</span>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown(
@@ -202,6 +209,7 @@ ALGO_SHORT_MAP = {
     'Random Forest':       'RF',
     'Gradient Boosting':   'GB',
 }
+ALGO_SHORT_MAP_INV = {v: k for k, v in ALGO_SHORT_MAP.items()}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HELPERS
@@ -227,15 +235,23 @@ def render_preprocessing_steps(steps, title="🔍 Tahap Preprocessing Citra"):
 
 
 def _update_top5():
-    """Sort model_run_history by Accuracy, keep top 5, update disk files."""
+    """Keep the best model (highest Accuracy) per algorithm. Max 5 models total."""
     history = st.session_state['model_run_history']
     if not history:
         st.session_state['top5_model_ids'] = []
         cleanup_non_top5([])
         return
-    sorted_h = sorted(history, key=lambda r: r['metrics']['Accuracy'], reverse=True)
-    top5_ids = [r['model_id'] for r in sorted_h[:5]]
+    best_per_algo = {}
+    for r in history:
+        algo = r['algo_short']
+        if algo not in best_per_algo or \
+                r['metrics']['Accuracy'] > best_per_algo[algo]['metrics']['Accuracy']:
+            best_per_algo[algo] = r
+    top5_ids = [r['model_id'] for r in best_per_algo.values()]
     st.session_state['top5_model_ids'] = top5_ids
+    st.session_state['best_per_algo'] = {
+        algo: r['model_id'] for algo, r in best_per_algo.items()
+    }
     cleanup_non_top5(top5_ids)
 
 
@@ -707,12 +723,20 @@ def page_pemodelan():
             })
 
             _update_top5()
-            top5_ids_now = st.session_state['top5_model_ids']
+            top5_ids_now  = st.session_state['top5_model_ids']
+            best_algo_map = st.session_state.get('best_per_algo', {})
             if model_id in top5_ids_now:
-                st.success(f"✅ **{model_id}** ({param_str}) berhasil dilatih dan masuk **Top 5**! 🏆")
+                st.success(
+                    f"✅ **{model_id}** ({param_str}) berhasil dilatih dan menjadi "
+                    f"**model terbaik {algo_full}**! 🏆"
+                )
             else:
+                current_best = best_algo_map.get(algo_short, '—')
                 st.success(f"✅ **{model_id}** ({param_str}) berhasil dilatih.")
-                st.info(f"Belum masuk Top 5. Top 5 saat ini: {', '.join(top5_ids_now)}")
+                st.info(
+                    f"Model terbaik {algo_full} saat ini: **{current_best}**. "
+                    f"Model terbaik per algoritma: {', '.join(top5_ids_now)}"
+                )
             st.rerun()
 
         # ── Recap table ───────────────────────────────────────────────
@@ -734,11 +758,11 @@ def page_pemodelan():
                 'Recall':    r['metrics']['Recall'],
                 'F1-Score':  r['metrics']['F1-Score'],
                 'Waktu (s)': r['metrics']['Execution Time (s)'],
-                'Status':    '🏆 Top 5' if r['model_id'] in top5_ids_now else '—',
+                'Status':    f"🏆 Terbaik {r['algo_short']}" if r['model_id'] in top5_ids_now else '—',
             } for r in history])
 
             def _hl_top5(row):
-                if row['Status'] == '🏆 Top 5':
+                if row['Status'] != '—':
                     return ['background-color:rgba(46,204,113,0.22);color:#1e8449;font-weight:bold'] * len(row)
                 return [''] * len(row)
 
@@ -766,7 +790,7 @@ def page_pemodelan():
 
             if top5_ids_now:
                 st.info(
-                    f"💾 **Top 5 tersimpan:** {' · '.join(top5_ids_now)} "
+                    f"💾 **Model terbaik per algoritma tersimpan:** {' · '.join(top5_ids_now)} "
                     "— Siap digunakan di halaman **🎯 Implementasi**."
                 )
 
