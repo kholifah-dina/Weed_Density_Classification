@@ -852,18 +852,6 @@ def _render_impl_history():
     if not runs:
         return
 
-    st.markdown("---")
-    # Latest run
-    latest = runs[-1]
-    st.markdown(
-        f"### 📊 Hasil Pengujian — **{latest['model_id']}** "
-        f"({latest['algo']}, {latest['param_str']})"
-    )
-
-    df_results = pd.DataFrame(latest['results'])
-    df_results.columns = ['No', 'Gambar', 'Label Aktual', 'Prediksi', 'Hasil']
-    df_results = df_results.set_index('No')
-
     def _style_hasil(val):
         if val == 'TRUE':
             return 'color:#27ae60; font-weight:bold'
@@ -871,93 +859,124 @@ def _render_impl_history():
             return 'color:#e74c3c; font-weight:bold'
         return ''
 
+    # ── Latest run individual table ───────────────────────────────────
+    st.markdown("---")
+    latest = runs[-1]
+    st.markdown(
+        f"### 📊 Hasil Pengujian — **{latest['model_id']}** "
+        f"({latest['algo']}, {latest['param_str']})"
+    )
+
+    df_latest = pd.DataFrame([
+        [r['no'], r['gambar'], r['aktual'], r['prediksi'], r['hasil']]
+        for r in latest['results']
+    ], columns=['No', 'Gambar', 'Label Aktual', 'Prediksi', 'Hasil']).set_index('No')
+
     st.dataframe(
-        df_results.style.map(_style_hasil, subset=['Hasil']),
+        df_latest.style.map(_style_hasil, subset=['Hasil']),
         use_container_width=True,
         height=min(450, len(latest['results']) * 38 + 55),
     )
-
-    # Summary
-    st.markdown("---")
     s1, s2, s3 = st.columns(3)
     s1.metric("Jumlah TRUE",  latest['true_count'])
     s2.metric("Jumlah FALSE", latest['false_count'])
     s3.metric("Presisinya",   f"{latest['presisi'] * 100:.1f}%")
 
-    # Multi-model comparison table
-    if len(runs) > 1:
-        st.markdown("---")
-        st.markdown("### 📋 Rekap Semua Pengujian Model")
-        df_runs = pd.DataFrame([{
-            'Model':           r['model_id'],
-            'Algoritma':       r['algo'],
-            'Parameter':       r['param_str'],
-            'Jml Gambar':      r['n_gambar'],
-            'Jumlah TRUE':     r['true_count'],
-            'Jumlah FALSE':    r['false_count'],
-            'Presisi':         f"{r['presisi'] * 100:.1f}%",
-        } for r in runs])
-        st.dataframe(df_runs, use_container_width=True)
+    # ── Pivot recap table — Excel format ─────────────────────────────
+    st.markdown("---")
+    st.markdown("### 📋 Rekap Semua Pengujian Model")
+    st.markdown(
+        "Tabel merangkum hasil prediksi semua model per data gambar. "
+        "Baris bawah menunjukkan ringkasan presisi tiap model."
+    )
 
-        avg_presisi = sum(r['presisi'] for r in runs) / len(runs)
-        st.markdown(
-            f"<div style='text-align:center;font-size:16px;font-weight:600;"
-            f"padding:12px;background:rgba(46,204,113,0.10);border-radius:8px;'>"
-            f"📊 Rata-rata Presisi: <b>{avg_presisi * 100:.1f}%</b> "
-            f"dari {len(runs)} pengujian model</div>",
-            unsafe_allow_html=True,
+    # Use aktual from the run with most images as reference baseline
+    base_run   = max(runs, key=lambda r: len(r['results']))
+    aktual_map = {res['no']: res['aktual'] for res in base_run['results']}
+    gambar_map = {res['no']: res['gambar'] for res in base_run['results']}
+    max_n      = len(base_run['results'])
+
+    # Build pivot rows (one row per image)
+    pivot_rows = []
+    for idx in range(1, max_n + 1):
+        row = [gambar_map.get(idx, f'gambar_{idx}'), aktual_map.get(idx, '—')]
+        for run in runs:
+            result_map = {res['no']: res for res in run['results']}
+            if idx in result_map:
+                row += [result_map[idx]['prediksi'], result_map[idx]['hasil']]
+            else:
+                row += ['—', '—']
+        pivot_rows.append(row)
+
+    # Build MultiIndex columns: (model_id, 'Prediksi') / (model_id, 'Hasil')
+    level0 = ['', ''] + [mid for run in runs for mid in [run['model_id'], run['model_id']]]
+    level1 = ['Gambar', 'Aktual'] + ['Prediksi', 'Hasil'] * len(runs)
+    mi_cols = pd.MultiIndex.from_arrays([level0, level1])
+
+    df_pivot = pd.DataFrame(pivot_rows, columns=mi_cols)
+    df_pivot.index = range(1, max_n + 1)
+    df_pivot.index.name = 'Data ke-'
+
+    # Style all 'Hasil' columns
+    hasil_subset = pd.IndexSlice[:, [(run['model_id'], 'Hasil') for run in runs]]
+    st.dataframe(
+        df_pivot.style.map(_style_hasil, subset=hasil_subset),
+        use_container_width=True,
+        height=min(600, max_n * 38 + 80),
+    )
+
+    # ── Summary table per model ────────────────────────────────────────
+    summary_rows = {
+        'Jumlah TRUE':  [run['true_count'] for run in runs],
+        'Jumlah FALSE': [run['false_count'] for run in runs],
+        'Presisinya':   [f"{run['presisi'] * 100:.0f}%" for run in runs],
+    }
+    df_summary = pd.DataFrame(
+        summary_rows,
+        index=[run['model_id'] for run in runs],
+    ).T
+    df_summary.index.name = 'Keterangan'
+    st.dataframe(df_summary, use_container_width=True)
+
+    # ── Average presisi banner ─────────────────────────────────────────
+    avg_presisi = sum(r['presisi'] for r in runs) / len(runs)
+    st.markdown(
+        f"<div style='text-align:center;font-size:16px;font-weight:600;"
+        f"padding:12px;background:rgba(46,204,113,0.10);border-radius:8px;margin:8px 0;'>"
+        f"📊 Rata-rata Presisi: <b>{avg_presisi * 100:.1f}%</b> "
+        f"dari {len(runs)} pengujian model</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Conclusion ─────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💬 Kesimpulan")
+    best_run  = max(runs, key=lambda r: r['presisi'])
+    worst_run = min(runs, key=lambda r: r['presisi'])
+    if avg_presisi >= 0.90:
+        kes = (
+            f"Model-model yang diuji menunjukkan keandalan **sangat tinggi** "
+            f"(rata-rata presisi ≥ 90%). "
+            f"Model terbaik adalah **{best_run['model_id']}** "
+            f"({best_run['algo']}) dengan presisi **{best_run['presisi'] * 100:.1f}%**. "
+            "Sistem siap digunakan untuk klasifikasi kepadatan gulma secara real-time."
         )
-
-        # Conclusion
-        st.markdown("---")
-        st.markdown("### 💬 Kesimpulan")
-        best_run  = max(runs, key=lambda r: r['presisi'])
-        worst_run = min(runs, key=lambda r: r['presisi'])
-        if avg_presisi >= 0.90:
-            kes = (
-                f"Model-model yang diuji menunjukkan keandalan **sangat tinggi** "
-                f"(rata-rata presisi ≥ 90%). "
-                f"Model terbaik adalah **{best_run['model_id']}** "
-                f"dengan presisi **{best_run['presisi'] * 100:.1f}%**. "
-                "Sistem siap digunakan untuk klasifikasi kepadatan gulma secara real-time."
-            )
-        elif avg_presisi >= 0.70:
-            kes = (
-                f"Model-model yang diuji menunjukkan keandalan **cukup baik** "
-                f"(rata-rata presisi 70–89%). "
-                f"Model terbaik: **{best_run['model_id']}** "
-                f"(presisi {best_run['presisi'] * 100:.1f}%). "
-                f"Model **{worst_run['model_id']}** "
-                f"(presisi {worst_run['presisi'] * 100:.1f}%) perlu evaluasi lebih lanjut."
-            )
-        else:
-            kes = (
-                f"Rata-rata presisi masih di bawah 70% ({avg_presisi * 100:.1f}%). "
-                "Disarankan menambah data training, mencoba kombinasi parameter berbeda, "
-                "atau menggunakan mode 39 fitur dengan seleksi Information Gain."
-            )
-        st.markdown(f"<div class='step-box'>{kes}</div>", unsafe_allow_html=True)
-
-    elif len(runs) == 1:
-        p = runs[0]['presisi']
-        st.markdown("---")
-        st.markdown("### 💬 Kesimpulan")
-        if p >= 0.90:
-            kes = (
-                f"Model **{runs[0]['model_id']}** menunjukkan keandalan **sangat tinggi** "
-                f"dengan presisi **{p * 100:.1f}%**."
-            )
-        elif p >= 0.70:
-            kes = (
-                f"Model **{runs[0]['model_id']}** menunjukkan keandalan **cukup baik** "
-                f"dengan presisi **{p * 100:.1f}%**."
-            )
-        else:
-            kes = (
-                f"Model **{runs[0]['model_id']}** memerlukan evaluasi lebih lanjut. "
-                f"Presisi **{p * 100:.1f}%** masih di bawah 70%."
-            )
-        st.markdown(f"<div class='step-box'>{kes}</div>", unsafe_allow_html=True)
+    elif avg_presisi >= 0.70:
+        kes = (
+            f"Model-model yang diuji menunjukkan keandalan **cukup baik** "
+            f"(rata-rata presisi 70–89%). "
+            f"Model terbaik: **{best_run['model_id']}** ({best_run['algo']}) "
+            f"dengan presisi {best_run['presisi'] * 100:.1f}%. "
+            f"Model **{worst_run['model_id']}** ({worst_run['algo']}) "
+            f"(presisi {worst_run['presisi'] * 100:.1f}%) perlu evaluasi lebih lanjut."
+        )
+    else:
+        kes = (
+            f"Rata-rata presisi masih di bawah 70% ({avg_presisi * 100:.1f}%). "
+            "Disarankan menambah data training, mencoba kombinasi parameter berbeda, "
+            "atau menggunakan mode 39 fitur dengan seleksi Information Gain."
+        )
+    st.markdown(f"<div class='step-box'>{kes}</div>", unsafe_allow_html=True)
 
     if st.button("🗑️ Hapus Riwayat Pengujian", key="btn_clear_impl"):
         st.session_state['impl_test_runs'] = []
