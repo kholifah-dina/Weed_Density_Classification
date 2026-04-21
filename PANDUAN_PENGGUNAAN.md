@@ -1,7 +1,7 @@
 # 📖 Panduan Penggunaan Sistem Klasifikasi Kepadatan Gulma
 
 **Sistem:** Weed Density Classification System  
-**Versi:** 3.0 (4 Menu Sidebar + Visualisasi Ekstraksi Fitur)  
+**Versi:** 4.0 (2 Halaman: Pemodelan & Implementasi — ID Model Sekuensial, Top 5 Auto-Save)  
 **Pemilik:** Kholifah Dina — Tugas Akhir, Universitas Telkom Purwokerto  
 
 ---
@@ -11,14 +11,12 @@
 1. [Persyaratan Sistem](#1-persyaratan-sistem)
 2. [Cara Menjalankan Aplikasi](#2-cara-menjalankan-aplikasi)
 3. [Navigasi Sistem](#3-navigasi-sistem)
-4. [Menu 1 — Alur Pelatihan](#4-menu-1--alur-pelatihan)
-5. [Menu 2 — Pengujian Gambar](#5-menu-2--pengujian-gambar)
-6. [Menu 3 — Eksperimen Parameter](#6-menu-3--eksperimen-parameter)
-7. [Menu 4 — Dashboard Hasil](#7-menu-4--dashboard-hasil)
-8. [Alur Penggunaan yang Disarankan](#8-alur-penggunaan-yang-disarankan)
-9. [Penjelasan Istilah Teknis](#9-penjelasan-istilah-teknis)
-10. [Troubleshooting (Masalah & Solusi)](#10-troubleshooting-masalah--solusi)
-11. [Struktur File Sistem](#11-struktur-file-sistem)
+4. [Halaman 1 — Pemodelan](#4-halaman-1--pemodelan)
+5. [Halaman 2 — Implementasi](#5-halaman-2--implementasi)
+6. [Alur Penggunaan yang Disarankan](#6-alur-penggunaan-yang-disarankan)
+7. [Penjelasan Istilah Teknis](#7-penjelasan-istilah-teknis)
+8. [Troubleshooting (Masalah & Solusi)](#8-troubleshooting-masalah--solusi)
+9. [Struktur File Sistem](#9-struktur-file-sistem)
 
 ---
 
@@ -47,7 +45,7 @@
 - Penyimpanan: 500 MB kosong
 - Koneksi internet (hanya untuk load font Google saat pertama kali)
 
-> 🌙 Sistem mendukung **Light Mode** dan **Dark Mode** secara otomatis — semua elemen teks dan tabel menyesuaikan tema yang aktif.
+> 🌙 Sistem mendukung **Light Mode** dan **Dark Mode** secara otomatis — semua elemen teks, tabel, dan grafik menyesuaikan tema yang aktif.
 
 ---
 
@@ -81,32 +79,35 @@ cd streamlit_app
 streamlit run app.py
 ```
 
-Aplikasi akan terbuka otomatis di browser di alamat: **http://localhost:8501**
+Aplikasi akan terbuka otomatis di browser: **http://localhost:8501**
 
-> ⚠️ **Catatan Penting:** File model (`DT.joblib`, `RF.joblib`, dll.) **tidak disertakan** di GitHub karena ukurannya besar. Setelah clone, Anda **harus melakukan training** terlebih dahulu melalui Menu Alur Pelatihan sebelum bisa melakukan pengujian.
+> ⚠️ **Catatan Penting:** File model (`TRAINED_LR1.joblib`, dll.) **tidak disertakan** di GitHub. Setelah clone, Anda **harus melakukan training** terlebih dahulu melalui halaman **🔬 Pemodelan** sebelum bisa menggunakan halaman **🎯 Implementasi**.
 
 ---
 
 ## 3. Navigasi Sistem
 
-Sistem menggunakan **sidebar di sebelah kiri** untuk navigasi. Klik salah satu dari 4 menu:
+Sistem menggunakan **sidebar di sebelah kiri** dengan **2 halaman**:
 
 ```
 🌿 Kepadatan Gulma
-├── 📚 Alur Pelatihan       ← Training model langkah demi langkah
-├── 🎯 Pengujian Gambar     ← Uji satu gambar, lihat prediksi
-├── 🔬 Eksperimen Parameter ← Tuning parameter, analisis performa
-└── 📊 Dashboard Hasil      ← Rekap semua hasil & laporan
+│
+├── Pilih Halaman:
+│   ○ 🔬 Pemodelan      ← Training model langkah demi langkah
+│   ○ 🎯 Implementasi   ← Evaluasi model dengan gambar uji
+│
+└── 💾 Top 5 Model Tersimpan:
+    🏆 LR2  🏆 SVM1  🏆 GB3  (contoh)
 ```
 
 > **Tidak ada login/role.** Semua fitur langsung bisa diakses oleh siapapun.
 
 ---
 
-## 4. Menu 1 — Alur Pelatihan
+## 4. Halaman 1 — Pemodelan
 
 ### Tujuan
-Melatih model klasifikasi dari dataset gambar gulma. Proses bersifat **edukatif** — setiap tahap divisualisasikan dengan penjelasan lengkap.
+Melatih model klasifikasi gulma dari dataset gambar secara bertahap dan edukatif. Setiap percobaan training diberi **ID unik** dan dicatat di **tabel rekap real-time**. Lima model terbaik disimpan otomatis untuk digunakan di halaman Implementasi.
 
 ### Langkah-langkah
 
@@ -114,35 +115,35 @@ Melatih model klasifikasi dari dataset gambar gulma. Proses bersifat **edukatif*
 
 #### 📁 Langkah 1 — Upload Dataset
 
-1. Buka menu **📚 Alur Pelatihan**
-2. Perhatikan info box di bagian atas: `📎 Format JPG/JPEG · Maks. 190 gambar/kelas · Min. 9 gambar/kelas`
+1. Buka halaman **🔬 Pemodelan** dari sidebar
+2. Perhatikan info box: `📎 Format JPG/JPEG · Maks. 190 gambar/kelas · Min. 9 gambar/kelas`
 3. Upload gambar untuk **3 kelas** menggunakan area drag-and-drop:
    - 🟢 **Renggang** — gambar lahan dengan gulma jarang
    - 🟡 **Sedang** — gambar lahan dengan gulma sedang
    - 🔴 **Padat** — gambar lahan dengan gulma padat
 4. Syarat upload:
-   - Format: **JPG atau JPEG** saja
+   - Format: **JPG atau JPEG** saja (bukan PNG)
    - **Minimal 9 gambar per kelas** (syarat wajib untuk stratified split 80:10:10)
    - **Maksimal 190 gambar per kelas**
 5. Tabel ringkasan jumlah gambar per kelas otomatis muncul
-6. Setelah semua kelas terisi dengan jumlah yang cukup, klik **"Lanjut ke Preprocessing →"**
+6. Klik **"Lanjut ke Preprocessing →"**
 
-> 💡 **Tips:** Semakin banyak gambar per kelas, semakin akurat model yang dihasilkan. Disarankan minimal 50 gambar per kelas untuk hasil yang baik.
+> 💡 **Tips:** Semakin banyak gambar per kelas, semakin akurat model. Disarankan minimal 50 gambar/kelas.
 
 ---
 
 #### 🖼️ Langkah 2 — Visualisasi Preprocessing
 
-Sistem secara otomatis menampilkan **4 tahap preprocessing** menggunakan 1 gambar contoh dari kelas Padat:
+Sistem menampilkan **4 tahap preprocessing** otomatis dari 1 gambar contoh kelas Padat:
 
 | Tahap | Nama | Penjelasan |
 |-------|------|-----------|
 | ① | Resize 224×224 | Gambar diubah ukuran menjadi 224×224 piksel sebagai standar input |
 | ② | Gaussian Blur (5×5) | Menghaluskan gambar dan meredam noise agar segmentasi lebih akurat |
-| ③ | HSV Thresholding | Mengisolasi piksel berwarna hijau (H:25–75°, S:40–255, V:50–255) sebagai area gulma |
+| ③ | HSV Thresholding | Mengisolasi piksel hijau (H:25–75°, S:40–255, V:50–255) sebagai area gulma |
 | ④ | Morphological Closing | Mengisi celah kecil pada mask agar area gulma terdeteksi utuh |
 
-Baca dan pahami setiap penjelasan tahap, lalu klik **"Lanjut ke Ekstraksi Fitur →"**
+Baca penjelasan setiap tahap, lalu klik **"Lanjut ke Ekstraksi Fitur →"**
 
 ---
 
@@ -156,342 +157,334 @@ Pilih salah satu mode fitur:
 | **39 Fitur** | GLCM (20) + RGB + HSV + Hu (19) | Information Gain | 14 fitur terbaik |
 
 **Detail Mode 19 Fitur:**
-- RGB mean & std (6 fitur): rata-rata dan variasi warna merah, hijau, biru
-- HSV mean & std (6 fitur): rata-rata dan variasi hue, saturation, value
-- Hu Moments (7 fitur): deskriptor bentuk yang invariant terhadap rotasi dan skala
-- Semua 19 fitur langsung digunakan tanpa proses seleksi
+- RGB mean & std (6 fitur): rata-rata dan variasi kanal R, G, B
+- HSV mean & std (6 fitur): rata-rata dan variasi Hue, Saturation, Value
+- Hu Moments (7 fitur): deskriptor bentuk invariant terhadap rotasi dan skala
+- Semua 19 fitur langsung digunakan tanpa seleksi
 
 **Detail Mode 39 Fitur:**
-- GLCM: 5 properti tekstur (contrast, dissimilarity, homogeneity, energy, correlation) × 4 sudut (0°, 45°, 90°, 135°) = 20 fitur
-- Ditambah 19 fitur warna dan bentuk di atas
-- **Information Gain (LAN)** otomatis memilih **14 fitur terbaik** dari total 39 fitur
+- GLCM: 5 properti tekstur × 4 sudut (0°, 45°, 90°, 135°) = 20 fitur
+- Ditambah 19 fitur warna dan bentuk
+- **Information Gain** otomatis memilih **14 fitur terbaik** dari 39 fitur
 
-Setelah memilih mode, klik tombol **"Jalankan Ekstraksi Fitur →"** atau **"Jalankan Ekstraksi & Information Gain →"**.
+Klik **"Jalankan Ekstraksi Fitur →"** (atau "Jalankan Ekstraksi & Information Gain →" untuk mode 39).
 
 **Output yang ditampilkan setelah ekstraksi berhasil:**
 
-**A. Tabel Pembagian Data**
-Menampilkan jumlah sampel Train / Validasi / Test hasil stratified split 80:10:10.
+**A. Info Pembagian Data**  
+Chip berwarna menampilkan jumlah sampel Train / Validasi / Test hasil stratified split 80:10:10.
 
-**B. Tabel Contoh Hasil Ekstraksi Fitur**
-Menampilkan 3 sampel per kelas (total 9 baris) dalam bentuk vektor numerik — setiap baris adalah satu gambar yang direpresentasikan sebagai angka-angka fitur.
+**B. Tabel Contoh Hasil Ekstraksi**  
+3 sampel per kelas (9 baris total) — setiap baris = satu gambar sebagai vektor numerik.
 
-**C. Untuk Mode 39 Fitur — Grafik & Tabel Information Gain:**
-- **Grafik bar chart horizontal** — semua 39 fitur diurutkan berdasarkan IG Score:
-  - Batang **hijau** = fitur yang dipilih (14 fitur)
-  - Batang **abu-abu** = fitur yang tidak dipilih (IG Score lebih rendah)
-- **Tabel ranking semua 39 fitur** — diurutkan dari IG Score tertinggi:
-  - Baris hijau tebal = fitur terpilih
-  - Baris abu-abu = fitur tidak terpilih
-- **Tabel 14 Fitur Terpilih** — daftar bersih fitur yang akan masuk ke model, dengan gradient warna hijau berdasarkan IG Score
+**C. Mode 39 Fitur — Grafik & Tabel Information Gain:**
+- **Bar chart horizontal** — 39 fitur diurutkan berdasarkan IG Score (hijau = dipilih, abu = tidak)
+- **Tabel ranking 39 fitur** — baris hijau = fitur terpilih, baris abu = tidak terpilih
+- **Tabel 14 Fitur Terpilih** — dengan gradient warna berdasarkan IG Score
 
-**D. Untuk Mode 19 Fitur — Tabel Daftar 19 Fitur:**
-- Tabel lengkap berisi: No, Nama Fitur, Kelompok, Deskripsi
+**D. Mode 19 Fitur — Tabel Daftar Fitur:**
+- Tabel berisi: No, Nama Fitur, Kelompok, Deskripsi
 - Warna per kelompok: 🟩 Hijau = RGB · 🟦 Biru = HSV · 🟧 Oranye = Hu Moments
 
-> 📌 14 fitur terpilih bersifat **dinamis** — ditentukan otomatis oleh Information Gain berdasarkan dataset yang digunakan. Fitur berbeda dapat terpilih pada dataset yang berbeda.
-
 ---
 
-#### 🤖 Langkah 4 — Pilih & Latih Model
+#### 🤖 Langkah 4 — Pelatihan Dinamis
 
-1. Pilih salah satu algoritma dari dropdown:
+Ini adalah inti fitur baru sistem. Setiap klik **Latih** menghasilkan satu model dengan **ID unik**.
 
-| Algoritma | Singkatan | Karakteristik |
-|-----------|-----------|--------------|
+**Cara Penggunaan:**
+
+1. Pilih algoritma dari dropdown:
+
+| Algoritma | Kode | Karakteristik |
+|-----------|------|--------------|
+| Logistic Regression | LR | Model linear sederhana, sangat cepat |
+| SVM | SVM | Efektif untuk data high-dimensional |
 | Decision Tree | DT | Mudah diinterpretasi, cepat dilatih |
-| Logistic Regression | LR | Model linear sederhana, baseline yang baik |
-| Support Vector Machine | SVM | Efektif untuk data high-dimensional |
-| Random Forest | RF | Ensemble 500 pohon, robust terhadap overfitting |
-| **Gradient Boosting** | **GB** | **Model utama penelitian — akurasi tertinggi** |
+| Random Forest | RF | Ensemble pohon, robust terhadap overfitting |
+| **Gradient Boosting** | **GB** | **Model utama penelitian — akurasi tinggi** |
 
-2. Klik **"🚀 Latih Model [NAMA]"**
-3. Tunggu proses selesai (beberapa detik hingga beberapa menit tergantung algoritma)
-4. Sistem menampilkan hasil training:
-   - Badge besar: nama model + Accuracy test
-   - 6 metrik: Accuracy, Precision, Recall, F1-Score, Val Accuracy, Execution Time
-   - Confusion Matrix interaktif dengan caption penjelasan
-5. **Model tersimpan otomatis** ke `models/[SINGKATAN].joblib` (contoh: `models/GB.joblib`)
+2. Pilih **nilai parameter** (dropdown, nilai fixed sesuai skripsi):
 
-**Ingin melatih model lain?** Ubah pilihan di dropdown dan klik Latih lagi — tidak perlu upload ulang gambar.
+| Algoritma | Parameter | Nilai Tersedia |
+|-----------|-----------|---------------|
+| Logistic Regression | `max_iter` | 100, 300, 500, 700, 1000 |
+| SVM | `kernel` | linear, rbf, poly |
+| Decision Tree | `max_depth` | 3, 5, 7, 9, 11 |
+| Random Forest | `n_estimators` | 100, 200, 300, 400, 500 |
+| Gradient Boosting | `n_estimators` | 100, 200, 300 |
+| Gradient Boosting | `learning_rate` | 0.01, 0.1, 1 |
 
-**Ingin mulai ulang dari awal?** Klik tombol **"🔄 Mulai Ulang dari Langkah 1"**
+3. Lihat preview ID model berikutnya (contoh: **LR1**, **SVM1**, **GB3**)
+4. Klik tombol **"🚀 Latih [ID] ([parameter])"**
+5. Tunggu proses selesai (beberapa detik hingga beberapa menit)
+6. Sistem menampilkan notifikasi sukses: apakah model masuk **Top 5** atau tidak
+
+**Tabel Rekap Real-time:**
+
+Setiap training menambah satu baris ke tabel di bawah form:
+
+| Model ID | Algoritma | Parameter | Accuracy | Precision | Recall | F1-Score | Waktu (s) | Status |
+|----------|-----------|-----------|----------|-----------|--------|----------|-----------|--------|
+| LR1 | Logistic Regression | max_iter=100 | 0.8500 | 0.8612 | 0.8500 | 0.8421 | 1.23 | 🏆 Top 5 |
+| LR2 | Logistic Regression | max_iter=300 | 0.8800 | 0.8901 | 0.8800 | 0.8750 | 1.45 | 🏆 Top 5 |
+| SVM1 | SVM | kernel=rbf | 0.9000 | 0.9123 | 0.9000 | 0.8967 | 2.30 | 🏆 Top 5 |
+
+- Baris **hijau tebal** = masuk Top 5 (tersimpan di disk)
+- Badge "🏆 Terbaik saat ini" muncul di bawah tabel secara otomatis
+
+**Auto-Save Top 5:**
+- Setiap selesai training, sistem mengurutkan semua riwayat berdasarkan Accuracy
+- **5 model tertinggi** disimpan sebagai `TRAINED_<ID>.joblib` di folder `models/`
+- Model yang tidak masuk Top 5 dihapus otomatis dari disk
+- Sidebar menampilkan daftar Top 5 yang aktif
+
+**Tombol di bawah:**
+- **"🔄 Mulai Ulang dari Langkah 1"** — reset langkah 1-4, riwayat pelatihan tetap
+- **"🗑️ Hapus Semua Riwayat Pelatihan"** — hapus semua riwayat + file model di disk
+
+> 📌 Anda bisa melatih hingga **23 model** (5 LR + 3 SVM + 5 DT + 5 RF + 3×3 GB = 23 kombinasi) dan sistem akan otomatis menjaga hanya **5 terbaik** yang tersimpan.
 
 ---
 
-### ⚠️ Hal Penting tentang Training
-
-- Data dibagi secara **stratified 80:10:10** (80% train, 10% validasi, 10% test)
-- Membutuhkan **minimal 9 gambar per kelas** agar stratified split bisa berjalan
-- Model dievaluasi menggunakan **data test yang tidak pernah dilihat model** selama training
-- Semua model menggunakan `class_weight='balanced'` untuk mengatasi ketidakseimbangan kelas
-- Gradient Boosting menggunakan `sample_weight` karena tidak mendukung `class_weight` di constructor
-
----
-
-## 5. Menu 2 — Pengujian Gambar
+## 5. Halaman 2 — Implementasi
 
 ### Tujuan
-Menguji satu gambar secara interaktif menggunakan model yang sudah dilatih.
+Mengevaluasi model terpilih menggunakan gambar uji nyata dengan perbandingan label aktual (ground truth) secara manual — sesuai format dokumentasi skripsi (mirip tabel Excel pengujian).
 
 ### Cara Penggunaan
 
-1. **Upload** satu gambar (JPG/JPEG) melalui file uploader
-2. Sistem otomatis menampilkan **4 tahap preprocessing** pada gambar tersebut beserta caption penjelasan
-3. **Pilih model** dari dropdown (hanya model yang sudah dilatih yang muncul)
-4. Sistem menampilkan informasi model: mode fitur yang digunakan, daftar fitur
-5. **Tabel nilai fitur** — semua nilai numerik yang diekstrak dari gambar ditampilkan dalam 2 kolom
-6. Hasil prediksi muncul dalam **kartu besar** berwarna:
-   - 🟢 Hijau = Renggang
-   - 🟡 Kuning/Oranye = Sedang
-   - 🔴 Merah = Padat
-7. Di bawah kartu prediksi ditampilkan:
-   - **Metrik evaluasi model** (Accuracy, Precision, Recall, F1-Score, Val Accuracy) dari data test training
-   - **Confusion Matrix** interaktif dengan caption penjelasan cara membaca
-8. Ganti model di dropdown untuk **membandingkan prediksi** dari model berbeda pada gambar yang sama
+---
 
-### Expander "Bandingkan Prediksi Semua Model"
-Klik untuk melihat prediksi semua model yang tersedia sekaligus dalam satu tabel (Model · Prediksi · Accuracy).
+#### 🤖 Pilih Model
 
-### ⚠️ Catatan
-- Confusion Matrix yang ditampilkan adalah dari **test split training** (bukan evaluasi gambar yang diupload)
-- Metrik evaluasi tersimpan di file `.joblib` saat training, bukan dihitung ulang dari gambar ini
+1. Buka halaman **🎯 Implementasi** dari sidebar
+2. Dropdown **"Model (dari Top 5 hasil pemodelan)"** menampilkan hanya 5 model terbaik
+3. Pilih model yang ingin diuji (contoh: LR2, SVM1, GB3)
+4. Info card model muncul otomatis:
+   - Nama algoritma, parameter, mode fitur
+   - Metrik training: Accuracy, Precision, Recall, F1-Score
+
+> ⚠️ Jika dropdown kosong, berarti belum ada model yang dilatih. Kembali ke halaman **🔬 Pemodelan** dan latih minimal satu model.
 
 ---
 
-## 6. Menu 3 — Eksperimen Parameter
+#### 📤 Upload Gambar Uji
 
-### Tujuan
-Menganalisis pengaruh perubahan parameter terhadap performa klasifikasi. Cocok untuk analisis mendalam pada skripsi.
-
-### Sumber Data
-Eksperimen menggunakan **dataset CSV penuh** (`Data_ekstraksi_Fitur_Gulma.csv` — 2.097 sampel) sehingga tidak perlu upload gambar ulang.
-
-### Cara Penggunaan
-
-1. **Pilih Mode Fitur:**
-   - `19 Fitur (tanpa GLCM)` — semua 19 fitur langsung
-   - `39 Fitur (dengan GLCM + IG)` — 39 fitur, dipilih 14 terbaik via Information Gain
-
-2. **Pilih Model** dari dropdown
-
-3. **Pilih nilai parameter** yang ingin diuji (bisa pilih lebih dari satu nilai sekaligus):
-
-| Model | Parameter | Nilai yang Tersedia |
-|-------|-----------|---------------------|
-| Logistic Regression | max_iter | 100, 300, 500, 700, 1000 |
-| SVM | kernel | linear, rbf, poly |
-| Decision Tree | max_depth | 3, 5, 7, 9, 11 |
-| Random Forest | n_estimators | 100, 200, 300, 400, 500 |
-| Gradient Boosting | n_estimators + learning_rate | kombinasi keduanya |
-
-4. Klik **"🚀 Jalankan Eksperimen"**
-
-5. **Progress real-time** ditampilkan dalam status box:
-   - `⏳ Melatih [model] — [parameter] = [nilai]` saat proses berjalan
-   - `✅ Selesai — [parameter] = [nilai] | Accuracy: X.XXXX` setelah tiap iterasi
-   - `✅ Semua eksperimen selesai!` ketika semua kombinasi selesai
-
-6. **Hasil yang ditampilkan:**
-   - **Tabel metrik** semua konfigurasi parameter (baris terbaik disorot hijau)
-   - **Grafik** metrik vs parameter — line chart (atau bar chart untuk Gradient Boosting)
-   - Caption penjelasan cara membaca grafik
-   - **Confusion Matrix** untuk konfigurasi parameter terbaik
-   - **Classification Report** detail per kelas (dalam expander)
-
-7. Klik **Jalankan Eksperimen** lagi dengan nilai berbeda untuk menambah hasil (hasil **terakumulasi**)
-
-8. Klik **"🗑️ Hapus Riwayat Eksperimen Model Ini"** untuk membersihkan hasil model tersebut
-
-### Tips Penggunaan Eksperimen
-- Jalankan eksperimen untuk **semua model** agar bisa dibandingkan di Dashboard
-- Coba berbagai nilai parameter untuk menemukan konfigurasi terbaik
-- Hasil semua eksperimen tersimpan di session dan muncul di Dashboard Hasil
-- Jika browser di-refresh, hasil eksperimen hilang — simpan screenshot sebelum refresh
+1. Upload hingga **10 gambar** sekaligus (JPG/JPEG)
+2. Jika upload lebih dari 10, hanya 10 gambar pertama yang diproses (ada peringatan)
+3. Gambar ditampilkan dalam **grid thumbnail** (maks. 5 kolom)
 
 ---
 
-## 7. Menu 4 — Dashboard Hasil
+#### 🏷️ Tentukan Label Aktual
 
-### Tujuan
-Rekap menyeluruh seluruh hasil sistem dalam satu halaman — cocok untuk laporan, presentasi, atau sidang skripsi.
+Di bawah setiap thumbnail gambar, tersedia **dropdown label aktual**:
 
-### Konten Dashboard
+```
+[thumbnail]    [thumbnail]    [thumbnail]
+Label #1        Label #2        Label #3
+[Renggang ▼]   [Sedang   ▼]   [Padat    ▼]
+```
 
-#### Seksi 1 — Rekap Preprocessing
-- Infografis 4 tahap preprocessing dengan nama dan penjelasan teks per tahap
-- Visualisasi contoh hasil preprocessing (muncul jika training pernah dilakukan di sesi ini)
-
-#### Seksi 2 — Perbandingan Semua Model Terlatih
-- **Tabel perbandingan** Accuracy, Precision, Recall, F1-Score, Val Accuracy, Execution Time
-- Baris **model terbaik** disorot hijau secara otomatis
-- **Badge** menampilkan nama model terbaik dan akurasinya
-- **Bar chart interaktif** perbandingan 4 metrik semua model dengan caption penjelasan
-- **Confusion Matrix semua model** dalam expander (dengan caption per chart)
-
-#### Seksi 3 — Rekap Semua Hasil Eksperimen Parameter
-- Tabel gabungan seluruh hasil eksperimen dari sesi ini
-- **Line chart** per model: tren Accuracy & F1-Score vs nilai parameter, dengan caption penjelasan
-
-#### Seksi 4 — Penjelasan Sistem (untuk Pembaca Umum)
-Klik masing-masing expander untuk membaca penjelasan non-teknis:
-- Apa itu Klasifikasi Kepadatan Gulma?
-- Apa itu HSV Thresholding?
-- Apa itu GLCM dan Information Gain?
-- Apa itu Gradient Boosting?
+- Pilih label sesuai dengan yang Anda identifikasi secara **visual** dari gambar tersebut
+- Ini adalah **Ground Truth** yang akan dibandingkan dengan prediksi model
 
 ---
 
-## 8. Alur Penggunaan yang Disarankan
+#### 🔍 Uji Model & Lihat Hasil
+
+1. Klik **"🔍 Uji Model"**
+2. Sistem memproses setiap gambar: preprocessing → ekstraksi fitur → prediksi
+3. **Tabel hasil** muncul sesuai format dokumentasi skripsi:
+
+| No | Gambar | Label Aktual | Prediksi | Hasil |
+|----|--------|-------------|----------|-------|
+| 1 | gambar1.jpg | R | R | **TRUE** ← teks hijau |
+| 2 | gambar2.jpg | R | S | **FALSE** ← teks merah |
+| 3 | gambar3.jpg | S | S | **TRUE** ← teks hijau |
+| 4 | gambar4.jpg | P | P | **TRUE** ← teks hijau |
+
+- **TRUE** (teks hijau) = prediksi cocok dengan label aktual
+- **FALSE** (teks merah) = prediksi tidak cocok
+
+4. **Summary otomatis** di bawah tabel:
+
+| Jumlah TRUE | Jumlah FALSE | Presisinya |
+|-------------|--------------|------------|
+| 7 | 3 | 70% |
+
+---
+
+#### 📋 Rekap Multi-Model
+
+Setiap kali Anda **mengganti model dan menguji lagi**, sistem menambah baris ke tabel rekap:
+
+| Model | Algoritma | Parameter | Jml Gambar | TRUE | FALSE | Presisi |
+|-------|-----------|-----------|------------|------|-------|---------|
+| LR1 | Logistic Regression | max_iter=100 | 10 | 7 | 3 | 70% |
+| SVM3 | SVM | kernel=linear | 10 | 9 | 1 | 90% |
+| GB1 | Gradient Boosting | n_est=200, lr=0.1 | 10 | 8 | 2 | 80% |
+| **Rata-rata** | | | | | | **80%** |
+
+---
+
+#### 💬 Narasi Kesimpulan Otomatis
+
+Sistem memberikan kesimpulan berdasarkan **rata-rata presisi** semua model yang diuji:
+
+| Rata-rata Presisi | Kesimpulan |
+|-------------------|-----------|
+| ≥ 90% | "Model menunjukkan keandalan **sangat tinggi**..." |
+| 70–89% | "Model menunjukkan keandalan **cukup baik**..." |
+| < 70% | "Diperlukan evaluasi lebih lanjut..." |
+
+**Tombol:** "🗑️ Hapus Riwayat Pengujian" — menghapus semua hasil uji di sesi ini.
+
+---
+
+## 6. Alur Penggunaan yang Disarankan
 
 ### Untuk Pertama Kali (Setelah Clone)
 
 ```
-1. Menu Alur Pelatihan
+1. Halaman 🔬 Pemodelan
    → Upload dataset (min. 9 gambar/kelas, disarankan ≥ 50/kelas)
    → Pahami visualisasi preprocessing (Langkah 2)
-   → Pilih mode fitur 39 Fitur (GLCM)
-   → Klik Jalankan Ekstraksi — baca grafik IG dan tabel fitur terpilih
-   → Latih SEMUA 5 model satu per satu (Langkah 4)
-   → Semua model tersimpan di models/
+   → Pilih mode 39 Fitur → Jalankan Ekstraksi → baca grafik IG
+   → Langkah 4: latih SEMUA variasi parameter untuk setiap algoritma:
+       LR: max_iter = 100, 300, 500, 700, 1000  → LR1 – LR5
+       SVM: kernel = linear, rbf, poly           → SVM1 – SVM3
+       DT: max_depth = 3, 5, 7, 9, 11           → DT1 – DT5
+       RF: n_estimators = 100..500              → RF1 – RF5
+       GB: kombinasi n_est × learning_rate      → GB1 – GB9
+   → Pantau tabel rekap, identifikasi Top 5 terbaik
 
-2. Menu Pengujian Gambar
-   → Upload 1 gambar baru yang belum pernah dipakai
-   → Coba semua model, bandingkan prediksi dan metriknya
-
-3. Menu Eksperimen Parameter
-   → Jalankan eksperimen untuk setiap model dengan berbagai nilai parameter
-   → Catat parameter terbaik per model
-
-4. Menu Dashboard Hasil
-   → Lihat rekap semua hasil dalam satu halaman
-   → Gunakan untuk bahan laporan dan presentasi sidang
+2. Halaman 🎯 Implementasi
+   → Pilih model dari Top 5 (misal: GB3 dengan akurasi tertinggi)
+   → Upload 10 gambar uji yang belum pernah digunakan saat training
+   → Isi label aktual sesuai identifikasi visual
+   → Klik Uji Model → catat hasil tabel
+   → Ulangi untuk model lain dari Top 5
+   → Bandingkan presisi antar model di tabel rekap
+   → Gunakan narasi kesimpulan untuk laporan skripsi
 ```
 
 ### Untuk Sesi Lanjutan (Model Sudah Ada)
-Model tersimpan di file `.joblib` — **tidak perlu training ulang**.  
-Langsung bisa ke **Menu Pengujian Gambar** atau **Eksperimen Parameter**.
+Selama session browser belum di-refresh, tabel rekap dan riwayat pengujian masih tersedia.  
+Jika refresh, latih ulang di Pemodelan untuk mengisi kembali Top 5.
 
 ### Untuk Presentasi / Sidang
-Buka **Menu Dashboard Hasil** — semua informasi sudah terekap lengkap di sana.
+1. Jalankan aplikasi sebelum presentasi
+2. Lakukan training semua variasi di Pemodelan — tunjukkan tabel rekap real-time
+3. Lakukan pengujian di Implementasi — tunjukkan tabel TRUE/FALSE dan ringkasan presisi
+4. Screenshot tabel rekap multi-model + narasi kesimpulan untuk bahan laporan
 
 ---
 
-## 9. Penjelasan Istilah Teknis
+## 7. Penjelasan Istilah Teknis
 
 | Istilah | Penjelasan Sederhana |
 |---------|---------------------|
 | **Preprocessing** | Serangkaian langkah pengolahan gambar sebelum fitur diekstrak |
-| **Gaussian Blur** | Teknik menghaluskan gambar untuk mengurangi gangguan/noise |
+| **Gaussian Blur** | Menghaluskan gambar untuk mengurangi gangguan/noise |
 | **HSV** | Model warna berbasis Hue (warna), Saturation (kepekatan), Value (kecerahan) |
 | **Thresholding** | Memilah piksel berdasarkan rentang nilai tertentu |
-| **Segmentasi** | Proses memisahkan area gulma dari latar belakang gambar |
+| **Segmentasi** | Proses memisahkan area gulma dari latar belakang |
 | **Morphological Closing** | Mengisi lubang kecil pada area yang tersegmentasi |
-| **GLCM** | Gray-Level Co-occurrence Matrix — matriks untuk mengukur tekstur gambar |
+| **GLCM** | Gray-Level Co-occurrence Matrix — mengukur tekstur gambar |
 | **Fitur** | Nilai numerik yang merepresentasikan karakteristik satu gambar |
-| **Information Gain (LAN)** | Metode memilih fitur paling informatif — mengukur seberapa besar fitur membantu klasifikasi |
-| **SelectKBest** | Algoritma seleksi fitur yang memilih K fitur dengan skor IG tertinggi |
-| **StandardScaler** | Normalisasi data agar semua fitur berada pada skala yang sama (z-score) |
-| **Stratified Split** | Pembagian data yang mempertahankan proporsi tiap kelas di setiap subset |
-| **Accuracy** | Persentase prediksi benar dari total prediksi |
+| **Information Gain (LAN)** | Mengukur seberapa besar fitur membantu memisahkan kelas |
+| **SelectKBest** | Memilih K fitur dengan skor IG tertinggi |
+| **StandardScaler** | Normalisasi data ke skala z-score |
+| **Stratified Split** | Pembagian data yang mempertahankan proporsi tiap kelas |
+| **ID Model Sekuensial** | Penomoran unik per algoritma: LR1, LR2, SVM1, GB3, dst. |
+| **Top 5** | 5 model dengan Accuracy tertinggi dari semua percobaan training |
+| **Ground Truth** | Label aktual yang ditentukan secara manual oleh pengguna |
+| **Presisi (Implementasi)** | Jumlah prediksi benar / total gambar uji × 100% |
+| **Accuracy** | Persentase prediksi benar dari total prediksi (data test training) |
 | **Precision** | Dari yang diprediksi kelas X, berapa persen yang benar-benar kelas X |
 | **Recall** | Dari yang sebenarnya kelas X, berapa persen yang berhasil terdeteksi |
-| **F1-Score** | Rata-rata harmonis Precision dan Recall — metrik seimbang |
-| **Val Accuracy** | Akurasi pada data validasi — digunakan untuk memantau overfitting |
-| **Confusion Matrix** | Tabel yang menunjukkan prediksi benar vs salah per kelas secara rinci |
-| **Classification Report** | Laporan lengkap Precision, Recall, F1-Score per kelas |
-| **Overfitting** | Model terlalu hafal data training sehingga performa buruk di data baru |
-| **class_weight='balanced'** | Memberi bobot lebih pada kelas minoritas untuk dataset tidak seimbang |
-| **sample_weight** | Bobot per sampel, digunakan pada GradientBoosting sebagai pengganti class_weight |
-| **Ensemble** | Menggabungkan banyak model untuk menghasilkan prediksi lebih akurat |
-| **Gradient Boosting** | Ensemble yang membangun pohon secara bertahap — tiap pohon memperbaiki error sebelumnya |
-| **Random Forest** | Ensemble dari banyak pohon keputusan yang dibuat secara acak dan independen |
+| **F1-Score** | Rata-rata harmonis Precision dan Recall |
+| **Confusion Matrix** | Tabel yang menunjukkan prediksi benar vs salah per kelas |
+| **Overfitting** | Model terlalu hafal data training, performa buruk di data baru |
+| **Gradient Boosting** | Ensemble bertahap — tiap pohon memperbaiki error sebelumnya |
+| **Random Forest** | Ensemble pohon independen yang dipilih secara acak |
 | **n_estimators** | Jumlah pohon dalam model ensemble |
 | **learning_rate** | Seberapa besar kontribusi tiap pohon baru dalam Gradient Boosting |
 | **max_depth** | Kedalaman maksimum sebuah pohon keputusan |
-| **Hu Moments** | 7 deskriptor bentuk objek yang invariant terhadap rotasi, skala, dan translasi |
+| **max_iter** | Jumlah iterasi maksimum dalam Logistic Regression |
+| **kernel** | Fungsi transformasi ruang fitur pada SVM (linear/rbf/poly) |
+| **Hu Moments** | 7 deskriptor bentuk objek invariant terhadap rotasi, skala, translasi |
 
 ---
 
-## 10. Troubleshooting (Masalah & Solusi)
+## 8. Troubleshooting (Masalah & Solusi)
 
-### ❌ "Belum ada model yang tersedia"
-**Penyebab:** File `.joblib` model belum ada — pertama kali setelah clone, atau model terhapus.  
-**Solusi:** Buka menu **📚 Alur Pelatihan** dan latih minimal satu model.
+### ❌ Dropdown model kosong di halaman Implementasi
+**Penyebab:** Belum ada model Top 5 yang tersimpan.  
+**Solusi:** Buka halaman **🔬 Pemodelan** → lakukan training minimal satu model di Langkah 4 → pastikan masuk Top 5 → kembali ke Implementasi.
 
 ---
 
 ### ❌ "Setiap kelas membutuhkan minimal 9 gambar"
-**Penyebab:** Jumlah gambar yang diupload kurang dari 9 per kelas. Stratified split 80:10:10 membutuhkan minimal 9 gambar per kelas (27 total) agar setiap subset mendapat setidaknya 1 sampel per kelas.  
-**Solusi:** Tambah gambar hingga setiap kelas memiliki minimal **9 gambar**, lalu ulangi dari Langkah 1.
+**Penyebab:** Jumlah gambar kurang dari 9 per kelas. Stratified split 80:10:10 membutuhkan minimal 9 agar setiap subset mendapat minimal 1 sampel per kelas.  
+**Solusi:** Tambah gambar hingga **≥ 9 per kelas**, lalu ulangi dari Langkah 1.
 
 ---
 
-### ❌ "File Data_ekstraksi_Fitur_Gulma.csv tidak ditemukan"
-**Penyebab:** File CSV tidak ada di folder `streamlit_app/`.  
-**Solusi:** Pastikan file `Data_ekstraksi_Fitur_Gulma.csv` berada di dalam folder `streamlit_app/`.
+### ❌ Model tidak muncul di Top 5 setelah training
+**Penyebab:** Model yang baru dilatih akurasinya lebih rendah dari 5 model yang sudah tersimpan.  
+**Solusi:** Coba algoritma atau parameter lain, atau hapus riwayat (tombol "🗑️ Hapus Semua Riwayat") dan mulai ulang.
 
 ---
 
-### ❌ Error saat training: "Tidak ada fitur yang berhasil diekstrak"
-**Penyebab:** Gambar yang diupload tidak dapat dibaca atau bukan format JPEG yang valid.  
-**Solusi:**
-1. Pastikan file berformat JPG/JPEG (bukan PNG yang diganti ekstensinya)
-2. Coba upload ulang dengan gambar yang berbeda
-3. Pastikan gambar tidak korup/rusak
+### ❌ "Tidak ada fitur yang berhasil diekstrak"
+**Penyebab:** Gambar tidak dapat dibaca atau bukan JPEG valid.  
+**Solusi:** Pastikan file berformat JPG/JPEG asli (bukan PNG diganti ekstensi). Upload ulang dengan gambar berbeda.
 
 ---
 
-### ❌ Training sangat lambat (lebih dari 5 menit)
-**Penyebab:** Dataset besar atau model Random Forest/Gradient Boosting memerlukan waktu komputasi panjang.  
-**Solusi:**
-- Ini normal — Random Forest (500 pohon) dan Gradient Boosting (300 iterasi) memang lebih lambat dari DT/LR/SVM
-- Tunggu hingga selesai — progress ditampilkan di spinner
-- Jika ingin lebih cepat untuk percobaan awal, gunakan Decision Tree atau Logistic Regression terlebih dahulu
+### ❌ Riwayat pelatihan/pengujian hilang setelah refresh browser
+**Penyebab:** Tabel rekap disimpan di session state (memori tab browser), bukan di file permanen.  
+**Solusi:** Simpan screenshot sebelum refresh. File model Top 5 (`.joblib`) tetap ada di disk — Anda hanya perlu training ulang agar tabel rekap terisi kembali.
 
 ---
 
-### ❌ Prediksi salah / tidak sesuai ekspektasi
-**Penyebab:** Model dilatih dengan dataset yang kurang representatif atau terlalu sedikit.  
-**Solusi:**
-1. Tambah jumlah gambar training per kelas (disarankan ≥ 50 gambar/kelas)
-2. Pastikan gambar training bervariasi (berbagai kondisi pencahayaan, sudut, jarak)
-3. Coba model lain — Gradient Boosting biasanya paling akurat
-4. Pastikan gambar uji kondisinya mirip dengan gambar training
+### ❌ Training sangat lambat
+**Penyebab:** Normal untuk Random Forest (n_estimators=500) dan Gradient Boosting.  
+**Solusi:** Tunggu hingga selesai. Untuk percobaan awal gunakan Decision Tree atau LR yang lebih cepat.
 
 ---
 
-### ❌ Refresh browser menghilangkan hasil eksperimen
-**Penyebab:** Hasil eksperimen disimpan di session state (memori tab browser), bukan di file permanen.  
-**Solusi:** Simpan screenshot hasil eksperimen sebelum refresh, atau jangan tutup/refresh halaman selama sesi eksperimen berjalan.
-
----
-
-### ❌ Error "ImportError" atau "ModuleNotFoundError"
-**Penyebab:** Library Python belum terinstall.  
-**Solusi:**
+### ❌ Error "ModuleNotFoundError"
 ```bash
+venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 ```
 
 ---
 
 ### ❌ Port 8501 sudah digunakan
-**Penyebab:** Ada instance Streamlit lain yang sedang berjalan.  
-**Solusi:**
 ```bash
 streamlit run app.py --server.port 8502
 ```
 
 ---
 
-### ❌ Teks tabel tidak terbaca di Dark Mode
-**Penyebab:** Menggunakan versi lama aplikasi sebelum perbaikan dark mode.  
-**Solusi:** Pastikan sudah `git pull origin main` untuk mendapatkan versi terbaru dengan dukungan dark mode penuh.
+### ❌ Error install opencv
+```bash
+pip install opencv-python-headless
+```
 
 ---
 
-## 11. Struktur File Sistem
+### ❌ Teks tabel tidak terbaca di Dark Mode
+**Solusi:** Pastikan sudah `git pull origin main` untuk mendapat versi terbaru.
+
+---
+
+## 9. Struktur File Sistem
 
 ```
 weed-density-app/
@@ -501,39 +494,35 @@ weed-density-app/
 ├── README.md                     # Dokumentasi singkat proyek
 ├── PANDUAN_PENGGUNAAN.md         # 📖 File ini
 └── streamlit_app/
-    ├── app.py                    # 🎨 Antarmuka utama (4 menu sidebar)
-    ├── predict.py                # 🧠 Logika training, inference, save/load model
+    ├── app.py                    # 🎨 Antarmuka utama (2 halaman: Pemodelan & Implementasi)
+    ├── predict.py                # 🧠 Training dinamis, inference, save/load, Top 5 management
     ├── preprocessing.py          # 🖼️ Pipeline preprocessing gambar
     ├── feature_extraction.py     # 🔬 Ekstraksi 19 atau 39 fitur
-    ├── Data_ekstraksi_Fitur_Gulma.csv  # 📊 Dataset 2.097 sampel (untuk Eksperimen)
-    └── models/                   # 💾 Folder model (dibuat otomatis)
-        ├── DT.joblib             # Model Decision Tree (dibuat setelah training)
-        ├── LR.joblib             # Model Logistic Regression
-        ├── SVM.joblib            # Model SVM
-        ├── RF.joblib             # Model Random Forest
-        └── GB.joblib             # Model Gradient Boosting ← Model Utama Penelitian
+    ├── Data_ekstraksi_Fitur_Gulma.csv  # 📊 Dataset 2.097 sampel
+    └── models/                   # 💾 Folder model (dibuat otomatis saat training)
+        └── TRAINED_<ID>.joblib   # Contoh: TRAINED_LR1.joblib, TRAINED_GB3.joblib
 ```
 
-### Isi setiap file `.joblib`
-Setiap file model menyimpan semua informasi yang dibutuhkan untuk inference:
+### Isi setiap file `TRAINED_<ID>.joblib`
 
 | Key | Isi |
 |-----|-----|
 | `model` | Objek classifier yang sudah dilatih |
 | `scaler` | StandardScaler yang sudah di-fit pada data training |
-| `selector` | SelectKBest untuk seleksi IG (hanya ada jika mode 39 fitur) |
+| `selector` | SelectKBest untuk seleksi IG (hanya jika mode 39 fitur) |
 | `feature_mode` | `'19'` atau `'39'` |
 | `features_used` | Daftar nama fitur yang digunakan model |
 | `n_features` | Jumlah fitur input model (19 atau 14) |
-| `metrics` | Accuracy, Precision, Recall, F1, Val Accuracy, Execution Time |
+| `metrics` | Accuracy, Precision, Recall, F1-Score, Val Accuracy, Execution Time |
 | `confusion_matrix` | Matriks konfusi + label kelas |
 | `split_info` | Jumlah sampel train / validasi / test |
+| `model_id` | ID unik: LR1, SVM3, GB2, dst. |
+| `algo_full` | Nama lengkap algoritma |
+| `param_str` | Konfigurasi parameter: "max_iter=300", "kernel=rbf", dst. |
 
 ---
 
-## Informasi Teknis Pipeline ML
-
-### Alur Lengkap
+### Alur Pipeline Lengkap
 
 ```
 Upload Gambar (JPG/JPEG)
@@ -550,22 +539,16 @@ StandardScaler (normalisasi z-score)
     ↓
 Split stratified: 80% Train | 10% Validasi | 10% Test  (min. 9 sampel/kelas)
     ↓
-Training Model (DT / LR / SVM / RF / GB)
+Training Dinamis — ID Unik per percobaan (LR1, LR2, SVM1, GB3, ...)
     ↓
-Evaluasi pada Test Split → Metrik & Confusion Matrix
+Evaluasi pada Test Split → Accuracy, Precision, Recall, F1-Score
     ↓
-Simpan ke models/[NAMA].joblib (berisi model + scaler + selector + metadata)
+Auto-Save Top 5 → models/TRAINED_<ID>.joblib
+    ↓
+Halaman Implementasi:
+  Pilih model → Upload gambar uji → Label aktual manual
+  → Prediksi → Tabel TRUE/FALSE → Presisi → Kesimpulan
 ```
-
-### Konfigurasi Model Default (untuk Menu Alur Pelatihan)
-
-| Model | Parameter Utama |
-|-------|----------------|
-| Decision Tree | `max_depth=3`, `class_weight='balanced'` |
-| Logistic Regression | `solver='lbfgs'`, `max_iter=300`, `class_weight='balanced'` |
-| SVM | `kernel='rbf'`, `C=5`, `gamma=0.01`, `class_weight='balanced'` |
-| Random Forest | `n_estimators=500`, `class_weight='balanced'` |
-| Gradient Boosting | `n_estimators=300`, `learning_rate=0.1`, `sample_weight` (balanced) |
 
 ---
 
