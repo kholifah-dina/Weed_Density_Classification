@@ -802,18 +802,20 @@ def page_pemodelan():
             st.markdown(
                 "Gunakan **parameter terbaik** dari masing-masing algoritma baseline yang sudah "
                 "dilatih, digabung dengan Gradient Boosting sebagai meta-learner (Stacking). "
+                "Setiap kombinasi hanya dilatih **1 kali** — ID tetap (LRGB1, SVMGB1, dst.). "
                 "Latih baseline dan GB di tab **Algoritma Tunggal** terlebih dahulu."
             )
 
-            history_combo    = st.session_state.get('model_run_history', [])
-            best_per_algo_c  = st.session_state.get('best_per_algo', {})
-            feat_mode_c      = st.session_state.get('train_feat_mode', '19')
-            sel_names_c      = st.session_state.get('train_sel_names') or FEATURE_NAMES_19
+            history_combo   = st.session_state.get('model_run_history', [])
+            best_per_algo_c = st.session_state.get('best_per_algo', {})
+            feat_mode_c     = st.session_state.get('train_feat_mode', '19')
+            sel_names_c     = st.session_state.get('train_sel_names') or FEATURE_NAMES_19
+
+            # Index history by model_id for fast lookup
+            history_by_id = {r['model_id']: r for r in history_combo}
 
             best_gb_id  = best_per_algo_c.get('GB')
-            best_gb_run = next(
-                (r for r in history_combo if r['model_id'] == best_gb_id), None
-            ) if best_gb_id else None
+            best_gb_run = history_by_id.get(best_gb_id) if best_gb_id else None
 
             if not best_gb_run:
                 st.warning(
@@ -823,29 +825,41 @@ def page_pemodelan():
 
             for base_short, base_full, combo_short in COMBO_DEFS:
                 st.markdown("---")
+                # Fixed ID — setiap kombinasi hanya 1 model
+                fixed_id      = f"{combo_short}1"
+                already_done  = fixed_id in history_by_id
                 best_base_id  = best_per_algo_c.get(base_short)
-                best_base_run = next(
-                    (r for r in history_combo if r['model_id'] == best_base_id), None
-                ) if best_base_id else None
-
-                ready     = best_base_run is not None and best_gb_run is not None
-                cur_cnt_c = st.session_state['algo_counters'].get(combo_short, 0)
-                next_id_c = f"{combo_short}{cur_cnt_c + 1}"
+                best_base_run = history_by_id.get(best_base_id) if best_base_id else None
+                ready         = best_base_run is not None and best_gb_run is not None
 
                 c_info, c_btn = st.columns([3, 1])
                 with c_info:
                     st.markdown(f"#### 🔗 {base_full} + GB")
-                    if ready:
-                        base_params_c = best_base_run.get('params', {})
-                        gb_params_c   = best_gb_run.get('params', {})
+
+                    if already_done:
+                        # Tampilkan hasil yang sudah ada
+                        done_r = history_by_id[fixed_id]
+                        m      = done_r['metrics']
+                        st.markdown(
+                            f"<div class='info-box'>"
+                            f"✅ <b>{fixed_id}</b> sudah dilatih.<br>"
+                            f"📌 <b>Base ({base_short}):</b> {done_r['param_str'].split(' + ')[0]}<br>"
+                            f"📌 <b>Meta (GB):</b> {done_r['param_str'].split(' + ')[1] if ' + ' in done_r['param_str'] else '—'}<br>"
+                            f"📊 Accuracy: <b>{m['Accuracy']:.4f}</b> &nbsp;|&nbsp; "
+                            f"Precision: <b>{m['Precision']:.4f}</b> &nbsp;|&nbsp; "
+                            f"Recall: <b>{m['Recall']:.4f}</b> &nbsp;|&nbsp; "
+                            f"F1: <b>{m['F1-Score']:.4f}</b>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                    elif ready:
                         st.markdown(
                             f"<div class='info-box'>"
                             f"📌 <b>Base ({base_short}):</b> {best_base_id} "
                             f"— {best_base_run['param_str']}<br>"
                             f"📌 <b>Meta (GB):</b> {best_gb_id} "
                             f"— {best_gb_run['param_str']}<br>"
-                            f"🆔 ID berikutnya: "
-                            f"<b style='color:#2ecc71;'>{next_id_c}</b>"
+                            f"🆔 Model ID: <b style='color:#2ecc71;'>{fixed_id}</b>"
                             f"</div>",
                             unsafe_allow_html=True,
                         )
@@ -862,8 +876,15 @@ def page_pemodelan():
 
                 with c_btn:
                     st.markdown("<br><br>", unsafe_allow_html=True)
-                    if st.button(
-                        f"🚀 Latih {next_id_c}" if ready else "🔒 Belum siap",
+                    if already_done:
+                        st.markdown(
+                            f"<div style='text-align:center;font-size:13px;"
+                            f"color:#27ae60;font-weight:600;padding:8px;'>"
+                            f"✅ {fixed_id}<br>Selesai</div>",
+                            unsafe_allow_html=True,
+                        )
+                    elif st.button(
+                        f"🚀 Latih {fixed_id}" if ready else "🔒 Belum siap",
                         key=f"btn_combo_{combo_short}",
                         disabled=not ready,
                         use_container_width=True,
@@ -874,17 +895,14 @@ def page_pemodelan():
                             f"{best_base_run['param_str']} + {best_gb_run['param_str']}"
                         )
                         with st.spinner(
-                            f"Melatih {next_id_c} "
-                            f"(Stacking: {base_full} + GB)… ini mungkin memakan waktu lebih lama."
+                            f"Melatih {fixed_id} "
+                            f"(Stacking: {base_full} + GB)… mungkin memakan waktu lebih lama."
                         ):
                             mdl_c, metrics_c, cm_c = train_stacking_model(
                                 base_short, base_params_c, gb_params_c,
                                 splits['X_train_sc'], splits['X_val_sc'], splits['X_test_sc'],
                                 splits['y_train'],    splits['y_val'],    splits['y_test'],
                             )
-
-                        model_id_c = next_id_c
-                        st.session_state['algo_counters'][combo_short] = cur_cnt_c + 1
 
                         bundle_c = {
                             'model':            mdl_c,
@@ -896,15 +914,15 @@ def page_pemodelan():
                             'metrics':          metrics_c,
                             'confusion_matrix': cm_c,
                             'split_info':       splits['split_info'],
-                            'model_id':         model_id_c,
+                            'model_id':         fixed_id,
                             'algo_short':       combo_short,
                             'algo_full':        f"{base_full} + GB",
                             'param_str':        combo_param_str,
                             'params':           {'base': base_params_c, 'gb': gb_params_c},
                         }
-                        save_trained_bundle(model_id_c, bundle_c)
+                        save_trained_bundle(fixed_id, bundle_c)
                         st.session_state['model_run_history'].append({
-                            'model_id':   model_id_c,
+                            'model_id':   fixed_id,
                             'algo_short': combo_short,
                             'algo_full':  f"{base_full} + GB",
                             'param_str':  combo_param_str,
@@ -914,19 +932,10 @@ def page_pemodelan():
                             'params':     {'base': base_params_c, 'gb': gb_params_c},
                         })
                         _update_top5()
-                        top5_now_c    = st.session_state['top5_model_ids']
-                        best_map_c    = st.session_state.get('best_per_algo', {})
-                        best_combo_id = best_map_c.get(combo_short, '—')
-                        if model_id_c in top5_now_c:
-                            st.success(
-                                f"✅ **{model_id_c}** ({base_full} + GB) berhasil dilatih! "
-                                f"Accuracy: {metrics_c['Accuracy']:.4f} 🏆"
-                            )
-                        else:
-                            st.success(
-                                f"✅ **{model_id_c}** berhasil dilatih. "
-                                f"Terbaik {combo_short}: **{best_combo_id}**"
-                            )
+                        st.success(
+                            f"✅ **{fixed_id}** ({base_full} + GB) berhasil dilatih! "
+                            f"Accuracy: {metrics_c['Accuracy']:.4f} 🏆"
+                        )
                         st.rerun()
 
         # ── Recap table ───────────────────────────────────────────────
