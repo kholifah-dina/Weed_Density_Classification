@@ -159,8 +159,9 @@ _defaults = {
     'model_run_history':  [],
     'top5_model_ids':     [],
     'best_per_algo':      {},
-    # Implementasi
-    'impl_test_runs':     [],
+    # Implementasi — accumulated per-model results (keyed by model_id)
+    'impl_model_data':   {},   # {model_id: {results_by_fname, latest_fnames, stats, ...}}
+    'impl_model_order':  [],   # [model_id, ...] — insertion order for pivot columns
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -1021,8 +1022,9 @@ def page_pemodelan():
 # HELPER — Render implementation history
 # ──────────────────────────────────────────────────────────────────────────────
 def _render_impl_history():
-    runs = st.session_state.get('impl_test_runs', [])
-    if not runs:
+    model_data  = st.session_state.get('impl_model_data',  {})
+    model_order = st.session_state.get('impl_model_order', [])
+    if not model_order:
         return
 
     def _style_hasil(val):
@@ -1033,17 +1035,29 @@ def _render_impl_history():
         return ''
 
     # ── Latest run individual table ───────────────────────────────────
+    # Show only images from the most recently tested model's last run
     st.markdown("---")
-    latest = runs[-1]
+    latest_mid   = model_order[-1]
+    latest_entry = model_data[latest_mid]
+    latest_fnames = latest_entry['latest_fnames']
+    rbf_latest   = latest_entry['results_by_fname']
+
     st.markdown(
-        f"### 📊 Hasil Pengujian — **{latest['model_id']}** "
-        f"({latest['algo']}, {latest['param_str']})"
+        f"### 📊 Hasil Pengujian Terakhir — **{latest_mid}** "
+        f"({latest_entry['algo']}, {latest_entry['param_str']})"
     )
 
-    df_latest = pd.DataFrame([
-        [r['no'], r['gambar'], r['aktual'], r['prediksi'], r['hasil']]
-        for r in latest['results']
-    ], columns=['No', 'Gambar', 'Label Aktual', 'Prediksi', 'Hasil']).set_index('No')
+    latest_rows = [
+        [i + 1, fname,
+         rbf_latest[fname]['aktual'],
+         rbf_latest[fname]['prediksi'],
+         rbf_latest[fname]['hasil']]
+        for i, fname in enumerate(latest_fnames)
+        if fname in rbf_latest
+    ]
+    df_latest = pd.DataFrame(
+        latest_rows, columns=['No', 'Gambar', 'Label Aktual', 'Prediksi', 'Hasil']
+    ).set_index('No')
 
     if df_latest.columns.is_unique and df_latest.index.is_unique:
         display_latest = df_latest.style.map(_style_hasil, subset=['Hasil'])
@@ -1052,60 +1066,60 @@ def _render_impl_history():
     st.dataframe(
         display_latest,
         use_container_width=True,
-        height=min(450, len(latest['results']) * 38 + 55),
+        height=min(450, len(df_latest) * 38 + 55),
     )
-    s1, s2, s3 = st.columns(3)
-    s1.metric("Jumlah TRUE",  latest['true_count'])
-    s2.metric("Jumlah FALSE", latest['false_count'])
-    s3.metric("Presisinya",   f"{latest['presisi'] * 100:.1f}%")
 
-    # ── Pivot recap table — Excel format ─────────────────────────────
+    # Metrics from the latest run only (not accumulated)
+    lt_true  = sum(1 for f in latest_fnames if rbf_latest.get(f, {}).get('hasil') == 'TRUE')
+    lt_total = sum(1 for f in latest_fnames if f in rbf_latest)
+    lt_false = lt_total - lt_true
+    lt_pres  = lt_true / lt_total if lt_total > 0 else 0.0
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Jumlah TRUE",  lt_true)
+    s2.metric("Jumlah FALSE", lt_false)
+    s3.metric("Presisinya",   f"{lt_pres * 100:.1f}%")
+
+    # ── Pivot recap table ─────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### 📋 Rekap Semua Pengujian Model")
     st.markdown(
         "Tabel merangkum hasil prediksi semua model per data gambar. "
-        "Baris bawah menunjukkan ringkasan presisi tiap model."
+        "**—** = model belum diuji dengan gambar ini."
     )
 
-    # Build filename-indexed pivot — match rows by filename, not by sequential no.
-    # This ensures predictions from different models are always aligned to the
-    # correct image, even when models were tested on different image sets.
+    # Collect all unique filenames across all models in order of first appearance
     seen_filenames: list[str] = []
-    filename_aktual: dict[str, str] = {}  # filename -> aktual (from first run that saw it)
-
-    for run in runs:
-        for res in run['results']:
-            fname = res['gambar']
+    filename_aktual: dict[str, str] = {}
+    for mid in model_order:
+        for fname, res in model_data[mid]['results_by_fname'].items():
             if fname not in filename_aktual:
                 seen_filenames.append(fname)
                 filename_aktual[fname] = res['aktual']
 
     max_n = len(seen_filenames)
+    if max_n == 0:
+        return
 
-    # Pre-build per-run lookup: filename -> result dict
-    run_lookup = [{res['gambar']: res for res in run['results']} for run in runs]
-
-    # One pivot row per unique filename
+    # Build pivot rows — one row per unique filename, matched by filename key
     pivot_rows = []
     for fname in seen_filenames:
         row = [fname, filename_aktual[fname]]
-        for lkp in run_lookup:
-            res = lkp.get(fname)
+        for mid in model_order:
+            res = model_data[mid]['results_by_fname'].get(fname)
             row += [res['prediksi'], res['hasil']] if res else ['—', '—']
         pivot_rows.append(row)
 
-    # Build MultiIndex columns: (model_id, 'Prediksi') / (model_id, 'Hasil')
-    level0 = ['', ''] + [mid for run in runs for mid in [run['model_id'], run['model_id']]]
-    level1 = ['Gambar', 'Aktual'] + ['Prediksi', 'Hasil'] * len(runs)
+    # MultiIndex columns: level0 = model_id (or ''), level1 = field name
+    level0 = ['', ''] + [mid for mid in model_order for _ in range(2)]
+    level1 = ['Gambar', 'Aktual'] + ['Prediksi', 'Hasil'] * len(model_order)
     mi_cols = pd.MultiIndex.from_arrays([level0, level1])
 
     df_pivot = pd.DataFrame(pivot_rows, columns=mi_cols)
     df_pivot.index = range(1, max_n + 1)
     df_pivot.index.name = 'Data ke-'
 
-    # Style all 'Hasil' columns — guard against non-unique columns (defensive)
     if df_pivot.columns.is_unique and df_pivot.index.is_unique:
-        hasil_subset = pd.IndexSlice[:, [(run['model_id'], 'Hasil') for run in runs]]
+        hasil_subset = pd.IndexSlice[:, [(mid, 'Hasil') for mid in model_order]]
         display_pivot = df_pivot.style.map(_style_hasil, subset=hasil_subset)
     else:
         display_pivot = df_pivot
@@ -1115,65 +1129,63 @@ def _render_impl_history():
         height=min(600, max_n * 38 + 80),
     )
 
-    # ── Summary table per model ────────────────────────────────────────
+    # ── Summary table per model (accumulated stats) ────────────────────
     summary_rows: dict[str, list] = {
-        'Jumlah TRUE':  [run['true_count'] for run in runs],
-        'Jumlah FALSE': [run['false_count'] for run in runs],
-        'Total Gambar': [run['n_gambar'] for run in runs],
-        'Presisinya':   [f"{run['presisi'] * 100:.1f}%" for run in runs],
+        'Jumlah TRUE':  [model_data[mid]['true_count'] for mid in model_order],
+        'Jumlah FALSE': [model_data[mid]['false_count'] for mid in model_order],
+        'Total Gambar': [model_data[mid]['n_gambar']    for mid in model_order],
+        'Presisinya':   [f"{model_data[mid]['presisi'] * 100:.1f}%" for mid in model_order],
     }
-    # Per-class breakdown rows (only if any run has class_breakdown)
     all_classes_seen: set[str] = set()
-    for run in runs:
-        all_classes_seen.update(run.get('class_breakdown', {}).keys())
+    for mid in model_order:
+        all_classes_seen.update(model_data[mid].get('class_breakdown', {}).keys())
     for kelas in _CLASSES:
         if kelas not in all_classes_seen:
             continue
         icon = _CLASS_ICON.get(kelas, '')
         row_vals = []
-        for run in runs:
-            bd = run.get('class_breakdown', {}).get(kelas)
+        for mid in model_order:
+            bd = model_data[mid].get('class_breakdown', {}).get(kelas)
             row_vals.append(f"{bd['true']}/{bd['total']}" if bd else '—')
         summary_rows[f"{icon} Benar {kelas}"] = row_vals
 
-    df_summary = pd.DataFrame(
-        summary_rows,
-        index=[run['model_id'] for run in runs],
-    ).T
+    df_summary = pd.DataFrame(summary_rows, index=list(model_order)).T
     df_summary.index.name = 'Keterangan'
     st.dataframe(df_summary, use_container_width=True)
 
     # ── Average presisi banner ─────────────────────────────────────────
-    avg_presisi = sum(r['presisi'] for r in runs) / len(runs)
+    avg_presisi = sum(model_data[mid]['presisi'] for mid in model_order) / len(model_order)
     st.markdown(
         f"<div style='text-align:center;font-size:16px;font-weight:600;"
         f"padding:12px;background:rgba(46,204,113,0.10);border-radius:8px;margin:8px 0;'>"
         f"📊 Rata-rata Presisi: <b>{avg_presisi * 100:.1f}%</b> "
-        f"dari {len(runs)} pengujian model</div>",
+        f"dari {len(model_order)} model</div>",
         unsafe_allow_html=True,
     )
 
     # ── Conclusion ─────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### 💬 Kesimpulan")
-    best_run  = max(runs, key=lambda r: r['presisi'])
-    worst_run = min(runs, key=lambda r: r['presisi'])
+    best_mid  = max(model_order, key=lambda m: model_data[m]['presisi'])
+    worst_mid = min(model_order, key=lambda m: model_data[m]['presisi'])
+    best_entry  = model_data[best_mid]
+    worst_entry = model_data[worst_mid]
     if avg_presisi >= 0.90:
         kes = (
             f"Model-model yang diuji menunjukkan keandalan **sangat tinggi** "
             f"(rata-rata presisi ≥ 90%). "
-            f"Model terbaik adalah **{best_run['model_id']}** "
-            f"({best_run['algo']}) dengan presisi **{best_run['presisi'] * 100:.1f}%**. "
+            f"Model terbaik adalah **{best_mid}** "
+            f"({best_entry['algo']}) dengan presisi **{best_entry['presisi'] * 100:.1f}%**. "
             "Sistem siap digunakan untuk klasifikasi kepadatan gulma secara real-time."
         )
     elif avg_presisi >= 0.70:
         kes = (
             f"Model-model yang diuji menunjukkan keandalan **cukup baik** "
             f"(rata-rata presisi 70–89%). "
-            f"Model terbaik: **{best_run['model_id']}** ({best_run['algo']}) "
-            f"dengan presisi {best_run['presisi'] * 100:.1f}%. "
-            f"Model **{worst_run['model_id']}** ({worst_run['algo']}) "
-            f"(presisi {worst_run['presisi'] * 100:.1f}%) perlu evaluasi lebih lanjut."
+            f"Model terbaik: **{best_mid}** ({best_entry['algo']}) "
+            f"dengan presisi {best_entry['presisi'] * 100:.1f}%. "
+            f"Model **{worst_mid}** ({worst_entry['algo']}) "
+            f"(presisi {worst_entry['presisi'] * 100:.1f}%) perlu evaluasi lebih lanjut."
         )
     else:
         kes = (
@@ -1184,7 +1196,8 @@ def _render_impl_history():
     st.markdown(f"<div class='step-box'>{kes}</div>", unsafe_allow_html=True)
 
     if st.button("🗑️ Hapus Riwayat Pengujian", key="btn_clear_impl"):
-        st.session_state['impl_test_runs'] = []
+        st.session_state['impl_model_data']  = {}
+        st.session_state['impl_model_order'] = []
         st.rerun()
 
 
@@ -1358,37 +1371,52 @@ def page_implementasi():
                 st.error(f"⚠️ {err}")
 
         if results:
-            true_count  = sum(1 for r in results if r['hasil'] == 'TRUE')
-            false_count = len(results) - true_count
-            presisi     = true_count / len(results)
+            model_data  = st.session_state['impl_model_data']
+            model_order = st.session_state['impl_model_order']
 
-            # Per-class breakdown
+            # Initialize entry for this model if first time tested
+            if selected_id not in model_data:
+                model_data[selected_id] = {
+                    'model_id':        selected_id,
+                    'algo':            bundle.get('algo_full', '?'),
+                    'param_str':       bundle.get('param_str', '?'),
+                    'results_by_fname': {},
+                    'latest_fnames':   [],
+                    'true_count':      0,
+                    'false_count':     0,
+                    'presisi':         0.0,
+                    'n_gambar':        0,
+                    'class_breakdown': {},
+                }
+                model_order.append(selected_id)
+
+            entry = model_data[selected_id]
+
+            # Merge new results into accumulated results_by_fname:
+            # — new filename  → added
+            # — same filename → prediction updated with latest run
+            # — filename not in new run → kept unchanged
+            entry['results_by_fname'].update({r['gambar']: r for r in results})
+            entry['latest_fnames'] = [r['gambar'] for r in results]
+
+            # Recalculate summary stats from ALL accumulated results
+            all_res = list(entry['results_by_fname'].values())
+            true_count  = sum(1 for r in all_res if r['hasil'] == 'TRUE')
+            false_count = len(all_res) - true_count
             class_breakdown: dict[str, dict] = {}
             for kelas in _CLASSES:
-                kelas_results = [r for r in results if r['aktual'] == kelas]
-                if kelas_results:
-                    k_true = sum(1 for r in kelas_results if r['hasil'] == 'TRUE')
+                kelas_res = [r for r in all_res if r['aktual'] == kelas]
+                if kelas_res:
                     class_breakdown[kelas] = {
-                        'true':  k_true,
-                        'total': len(kelas_results),
+                        'true':  sum(1 for r in kelas_res if r['hasil'] == 'TRUE'),
+                        'total': len(kelas_res),
                     }
+            entry['true_count']      = true_count
+            entry['false_count']     = false_count
+            entry['presisi']         = true_count / len(all_res)
+            entry['n_gambar']        = len(all_res)
+            entry['class_breakdown'] = class_breakdown
 
-            new_run = {
-                'model_id':        selected_id,
-                'algo':            bundle.get('algo_full', '?'),
-                'param_str':       bundle.get('param_str', '?'),
-                'results':         results,
-                'true_count':      true_count,
-                'false_count':     false_count,
-                'presisi':         presisi,
-                'n_gambar':        len(results),
-                'class_breakdown': class_breakdown,
-            }
-            # Replace any existing run for this model_id (prevents duplicate columns in pivot)
-            existing = st.session_state['impl_test_runs']
-            st.session_state['impl_test_runs'] = [
-                r for r in existing if r['model_id'] != selected_id
-            ] + [new_run]
             st.rerun()
 
     _render_impl_history()
