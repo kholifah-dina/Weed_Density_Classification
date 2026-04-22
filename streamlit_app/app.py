@@ -1045,8 +1045,12 @@ def _render_impl_history():
         for r in latest['results']
     ], columns=['No', 'Gambar', 'Label Aktual', 'Prediksi', 'Hasil']).set_index('No')
 
+    if df_latest.columns.is_unique and df_latest.index.is_unique:
+        display_latest = df_latest.style.map(_style_hasil, subset=['Hasil'])
+    else:
+        display_latest = df_latest
     st.dataframe(
-        df_latest.style.map(_style_hasil, subset=['Hasil']),
+        display_latest,
         use_container_width=True,
         height=min(450, len(latest['results']) * 38 + 55),
     )
@@ -1090,10 +1094,14 @@ def _render_impl_history():
     df_pivot.index = range(1, max_n + 1)
     df_pivot.index.name = 'Data ke-'
 
-    # Style all 'Hasil' columns
-    hasil_subset = pd.IndexSlice[:, [(run['model_id'], 'Hasil') for run in runs]]
+    # Style all 'Hasil' columns — guard against non-unique columns (defensive)
+    if df_pivot.columns.is_unique and df_pivot.index.is_unique:
+        hasil_subset = pd.IndexSlice[:, [(run['model_id'], 'Hasil') for run in runs]]
+        display_pivot = df_pivot.style.map(_style_hasil, subset=hasil_subset)
+    else:
+        display_pivot = df_pivot
     st.dataframe(
-        df_pivot.style.map(_style_hasil, subset=hasil_subset),
+        display_pivot,
         use_container_width=True,
         height=min(600, max_n * 38 + 80),
     )
@@ -1356,7 +1364,7 @@ def page_implementasi():
                         'total': len(kelas_results),
                     }
 
-            st.session_state['impl_test_runs'].append({
+            new_run = {
                 'model_id':        selected_id,
                 'algo':            bundle.get('algo_full', '?'),
                 'param_str':       bundle.get('param_str', '?'),
@@ -1366,7 +1374,12 @@ def page_implementasi():
                 'presisi':         presisi,
                 'n_gambar':        len(results),
                 'class_breakdown': class_breakdown,
-            })
+            }
+            # Replace any existing run for this model_id (prevents duplicate columns in pivot)
+            existing = st.session_state['impl_test_runs']
+            st.session_state['impl_test_runs'] = [
+                r for r in existing if r['model_id'] != selected_id
+            ] + [new_run]
             st.rerun()
 
     _render_impl_history()
