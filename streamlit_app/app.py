@@ -1067,22 +1067,31 @@ def _render_impl_history():
         "Baris bawah menunjukkan ringkasan presisi tiap model."
     )
 
-    # Use aktual from the run with most images as reference baseline
-    base_run   = max(runs, key=lambda r: len(r['results']))
-    aktual_map = {res['no']: res['aktual'] for res in base_run['results']}
-    gambar_map = {res['no']: res['gambar'] for res in base_run['results']}
-    max_n      = len(base_run['results'])
+    # Build filename-indexed pivot — match rows by filename, not by sequential no.
+    # This ensures predictions from different models are always aligned to the
+    # correct image, even when models were tested on different image sets.
+    seen_filenames: list[str] = []
+    filename_aktual: dict[str, str] = {}  # filename -> aktual (from first run that saw it)
 
-    # Build pivot rows (one row per image)
+    for run in runs:
+        for res in run['results']:
+            fname = res['gambar']
+            if fname not in filename_aktual:
+                seen_filenames.append(fname)
+                filename_aktual[fname] = res['aktual']
+
+    max_n = len(seen_filenames)
+
+    # Pre-build per-run lookup: filename -> result dict
+    run_lookup = [{res['gambar']: res for res in run['results']} for run in runs]
+
+    # One pivot row per unique filename
     pivot_rows = []
-    for idx in range(1, max_n + 1):
-        row = [gambar_map.get(idx, f'gambar_{idx}'), aktual_map.get(idx, '—')]
-        for run in runs:
-            result_map = {res['no']: res for res in run['results']}
-            if idx in result_map:
-                row += [result_map[idx]['prediksi'], result_map[idx]['hasil']]
-            else:
-                row += ['—', '—']
+    for fname in seen_filenames:
+        row = [fname, filename_aktual[fname]]
+        for lkp in run_lookup:
+            res = lkp.get(fname)
+            row += [res['prediksi'], res['hasil']] if res else ['—', '—']
         pivot_rows.append(row)
 
     # Build MultiIndex columns: (model_id, 'Prediksi') / (model_id, 'Hasil')
